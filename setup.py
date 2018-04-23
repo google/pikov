@@ -21,8 +21,8 @@ here = path.abspath(path.dirname(__file__))
 readme = open(path.join(here, 'README.rst'), encoding='utf-8').read()
 
 setup(
-    name='pixov',
-    description='Create and edit .pixov pixel art animation files.',
+    name='pikov',
+    description='Pikov (PIxel art marKOV chain) animation tool',
     version='0.0.1.dev1',
     author='Tim Swast',
     author_email='swast@google.com',
@@ -32,7 +32,7 @@ setup(
     ],
     license='Apache 2.0',
     long_description=readme,
-    url='https://github.com/tswast/pixov',
+    url='https://github.com/tswast/pikov',
     keywords='pixelart animation',
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -42,7 +42,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'pixov=pixov.pixov:main',
+            'pikov=pikov.pikov:main',
         ],
     },
 )

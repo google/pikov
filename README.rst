@@ -1,7 +1,7 @@
-Pixov
-=====
+Pikov (PIxel art marKOV chain) animation tool
+=============================================
 
-Command-line tool for creating and editing .pixov pixel art animations
+Command-line tool for creating and editing .pikov pixel art animations
 
 Disclaimer
 ----------
