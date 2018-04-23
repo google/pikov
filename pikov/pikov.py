@@ -12,14 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import sqlite3
-import sys
+
+
+def add_frame():
+    raise NotImplementedError('add-frame command not implemented yet')
+
+
+def create(pixov_path):
+    conn = sqlite3.connect(pixov_path)
+    cursor = conn.cursor()
+    cursor.execute('CREATE TABLE frames (key TEXT PRIMARY KEY, contents BLOB)')
 
 
 def main():
-    conn = sqlite3.connect(sys.argv[1])
-    cursor = conn.cursor()
-    cursor.execute('CREATE TABLE frames (key TEXT PRIMARY KEY, contents BLOB)')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('pikov_path', help='Path to .pikov file.')
+
+    subparsers = parser.add_subparsers(title='Actions', dest='action')
+    subparsers.add_parser(
+        'create', help='Create a new .pikov file.')
+    subparsers.add_parser(
+        'add-frame', help='Add a frame to an existing .pikov file.')
+
+    args = parser.parse_args()
+    if args.action == 'create':
+        create(args.pikov_path)
+    elif args.action == 'add-frame':
+        add_frame()
+    elif args.action is not None:
+        raise NotImplementedError('Got unknown action: {}')
 
 
 if __name__ == '__main__':
