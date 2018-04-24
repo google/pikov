@@ -20,25 +20,37 @@ def add_frame():
     raise NotImplementedError('add-frame command not implemented yet')
 
 
-def create(pixov_path):
+def create(pixov_path, frame_width, frame_height):
     conn = sqlite3.connect(pixov_path)
     cursor = conn.cursor()
-    cursor.execute('CREATE TABLE frames (key TEXT PRIMARY KEY, contents BLOB)')
+    cursor.execute(
+        'CREATE TABLE frames (key TEXT PRIMARY KEY, contents BLOB)')
+    cursor.execute(
+        'CREATE TABLE pikov '
+        '(id INTEGER PRIMARY KEY, frame_width INTEGER, frame_height INTEGER)')
+    cursor.execute(
+        'INSERT INTO pikov (frame_width, frame_height) VALUES (?, ?)',
+        (frame_width, frame_height))
+    conn.commit()
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('pikov_path', help='Path to .pikov file.')
 
     subparsers = parser.add_subparsers(title='Actions', dest='action')
-    subparsers.add_parser(
+    create_parser = subparsers.add_parser(
         'create', help='Create a new .pikov file.')
+    create_parser.add_argument('pikov_path', help='Path to .pikov file.')
+    create_parser.add_argument(
+        'frame_size', help='Size of frame. WIDTHxHEIGHT. Example: 8x8')
+
     subparsers.add_parser(
         'add-frame', help='Add a frame to an existing .pikov file.')
 
     args = parser.parse_args()
     if args.action == 'create':
-        create(args.pikov_path)
+        frame_width, frame_height = map(int, args.frame_size.split('x'))
+        create(args.pikov_path, frame_width, frame_height)
     elif args.action == 'add-frame':
         add_frame()
     elif args.action is not None:
