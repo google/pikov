@@ -15,13 +15,31 @@
 import argparse
 import sqlite3
 
-
-def add_frame():
-    raise NotImplementedError('add-frame command not implemented yet')
+from PIL import Image
 
 
-def create(pixov_path, frame_width, frame_height):
-    conn = sqlite3.connect(pixov_path)
+def add_frames(pikov_path, sprite_sheet_path):
+    # Read the frame size from the Pikov file.
+    conn = sqlite3.connect(pikov_path)
+    cursor = conn.cursor()
+    cursor.execute('SELECT frame_width, frame_height FROM pikov')
+    frame_width, frame_height = cursor.fetchone()
+    # Chop the sprite sheet into frames.
+    sheet = Image.open(sprite_sheet_path)
+    sheet_width, sheet_height = sheet.size
+    rows = sheet_height // frame_height
+    cols = sheet_width // frame_width
+    for row in range(rows):
+        for col in range(cols):
+            frame = sheet.crop(box=(
+                col * frame_width, row * frame_height,
+                (col + 1) * frame_width, (row + 1) * frame_height,))
+            frame.show()
+            return
+
+
+def create(pikov_path, frame_width, frame_height):
+    conn = sqlite3.connect(pikov_path)
     cursor = conn.cursor()
     cursor.execute(
         'CREATE TABLE frames (key TEXT PRIMARY KEY, contents BLOB)')
@@ -44,17 +62,22 @@ def main():
     create_parser.add_argument(
         'frame_size', help='Size of frame. WIDTHxHEIGHT. Example: 8x8')
 
-    subparsers.add_parser(
-        'add-frame', help='Add a frame to an existing .pikov file.')
+    add_frames_parser = subparsers.add_parser(
+        'add-frames',
+        help='Add frames from a sprite sheet to an existing .pikov file.')
+    add_frames_parser.add_argument('pikov_path', help='Path to .pikov file.')
+    add_frames_parser.add_argument(
+        'sprite_sheet_path', help='Path to sprite sheet.')
 
     args = parser.parse_args()
     if args.action == 'create':
         frame_width, frame_height = map(int, args.frame_size.split('x'))
         create(args.pikov_path, frame_width, frame_height)
-    elif args.action == 'add-frame':
-        add_frame()
+    elif args.action == 'add-frames':
+        add_frames(args.pikov_path, args.sprite_sheet_path)
     elif args.action is not None:
-        raise NotImplementedError('Got unknown action: {}')
+        raise NotImplementedError(
+            'Got unknown action: {}'.format(args.action))
 
 
 if __name__ == '__main__':
