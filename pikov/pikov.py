@@ -13,12 +13,37 @@
 # limitations under the License.
 
 import argparse
+import hashlib
 import sqlite3
 
 from PIL import Image
 
 
+def hash_image(image):
+    """Encode pixels as bytes and take the MD5 hash.
+
+    Note: this is meant for de-duplication, not security purposes.
+    """
+    # Convert to common format for deterministic encoding.
+    if image.getbands() != ('R', 'G', 'B', 'A'):
+        image = image.convert(mode='RGBA')
+    assert image.getbands() == ('R', 'G', 'B', 'A')
+
+    md5 = hashlib.md5()
+
+    for x in range(image.size[0]):
+        for y in range(image.size[1]):
+            # Format each pixel as a 4-byte string.
+            # https://stackoverflow.com/a/31761722/101923
+            md5.update(b"%c%c%c%c" % image.getpixel((x, y)))
+
+    return md5.hexdigest()
+
+
 def add_frames(pikov_path, sprite_sheet_path):
+    image_hashes = set()
+    duplicates = 0
+
     # Read the frame size from the Pikov file.
     conn = sqlite3.connect(pikov_path)
     cursor = conn.cursor()
@@ -34,8 +59,15 @@ def add_frames(pikov_path, sprite_sheet_path):
             frame = sheet.crop(box=(
                 col * frame_width, row * frame_height,
                 (col + 1) * frame_width, (row + 1) * frame_height,))
-            frame.show()
-            return
+
+            image_hash = hash_image(frame)
+            if image_hash in image_hashes:
+                duplicates += 1
+            else:
+                image_hashes.add(image_hash)
+
+    print('Added {} of {} images (skipped {} duplicates)'.format(
+        len(image_hashes), rows * cols, duplicates))
 
 
 def create(pikov_path, frame_width, frame_height):
