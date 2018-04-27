@@ -14,9 +14,52 @@
 
 import argparse
 import hashlib
+import io
 import sqlite3
 
 from PIL import Image
+
+
+class Pikov(object):
+    def __init__(self, connection):
+        self.connection = connection
+
+    @classmethod
+    def open(cls, path):
+        connection = sqlite3.connect(path)
+        return cls(connection)
+
+    @property
+    def size(self):
+        cursor = self.connection.cursor()
+        cursor.execute('SELECT frame_width, frame_height FROM pikov')
+        return cursor.fetchone()
+
+    def add_frame(self, frame):
+        """Add a frame image to the Pikov file.
+
+        Args:
+            frame (PIL.Image.Image):
+                A frame image to add to the Pikov file.
+
+        Returns:
+            bool:
+                True if the image was added. False if the the image was a
+                duplicate of an existing frame.
+        """
+        image_io = io.BytesIO()
+        frame.save(image_io, format='PNG')
+        image_hash = hash_image(frame)
+
+        try:
+            with self.connection:
+                cursor = self.connection.cursor()
+                cursor.execute(
+                    'INSERT INTO frames (key, contents) '
+                    'VALUES (?, ?)', (image_hash, image_io.read()))
+        except sqlite3.IntegrityError:
+            return False  # Frame already exists
+        return True
 
 
 def hash_image(image):
@@ -41,14 +84,13 @@ def hash_image(image):
 
 
 def add_frames(pikov_path, sprite_sheet_path):
-    image_hashes = set()
+    frames_added = 0
     duplicates = 0
 
     # Read the frame size from the Pikov file.
-    conn = sqlite3.connect(pikov_path)
-    cursor = conn.cursor()
-    cursor.execute('SELECT frame_width, frame_height FROM pikov')
-    frame_width, frame_height = cursor.fetchone()
+    pikov = Pikov.open(pikov_path)
+    frame_width, frame_height = pikov.size
+
     # Chop the sprite sheet into frames.
     sheet = Image.open(sprite_sheet_path)
     sheet_width, sheet_height = sheet.size
@@ -60,14 +102,13 @@ def add_frames(pikov_path, sprite_sheet_path):
                 col * frame_width, row * frame_height,
                 (col + 1) * frame_width, (row + 1) * frame_height,))
 
-            image_hash = hash_image(frame)
-            if image_hash in image_hashes:
-                duplicates += 1
+            if pikov.add_frame(frame):
+                frames_added += 1
             else:
-                image_hashes.add(image_hash)
+                duplicates += 1
 
-    print('Added {} of {} images (skipped {} duplicates)'.format(
-        len(image_hashes), rows * cols, duplicates))
+    print('Added {} of {} frames ({} duplicates)'.format(
+        frames_added, rows * cols, duplicates))
 
 
 def create(pikov_path, frame_width, frame_height):
