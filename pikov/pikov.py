@@ -22,12 +22,31 @@ from PIL import Image
 
 class Pikov(object):
     def __init__(self, connection):
-        self.connection = connection
+        self._connection = connection
 
     @classmethod
     def open(cls, path):
         connection = sqlite3.connect(path)
+        cursor = connection.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
         return cls(connection)
+
+    @classmethod
+    def create(cls, path):
+        pikov = cls.open(path)
+        cursor = pikov._connection.cursor()
+        cursor.execute(
+            'CREATE TABLE image (key TEXT PRIMARY KEY, contents BLOB)')
+        cursor.execute(
+            'CREATE TABLE frame ('
+            'id INTEGER PRIMARY KEY, '
+            'image_key TEXT, '
+            'FOREIGN KEY(image_key) REFERENCES image(key))')
+        cursor.execute(
+            'CREATE TABLE clip ('
+            'id INTEGER PRIMARY KEY, '
+            'sequence TEXT)')
+        pikov._connection.commit()
 
     def add_image(self, image):
         """Add an image to the Pikov file.
@@ -47,14 +66,46 @@ class Pikov(object):
         image_hash = hash_image(image)
 
         try:
-            with self.connection:
-                cursor = self.connection.cursor()
+            with self._connection:
+                cursor = self._connection.cursor()
                 cursor.execute(
                     'INSERT INTO image (key, contents) '
                     'VALUES (?, ?)', (image_hash, image_io.read()))
         except sqlite3.IntegrityError:
             return image_hash, False  # Frame already exists
         return image_hash, True
+
+    def add_frame(self, image_key):
+        """Add a frame to the Pikov file.
+
+        Args:
+            image_key (str):
+                An image to use as a frame in a clip.
+
+        Returns:
+            int: ID of the frame added.
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'INSERT INTO frame (image_key) VALUES (?)', (image_key,))
+            return cursor.lastrowid
+
+    def add_clip(self, clip):
+        """Add an animation clip to the Pikov file.
+
+        Args:
+            clip (List[int]): A list of frame IDs.
+
+        Returns:
+            int: ID of the clip added.
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'INSERT INTO clip (sequence) VALUES (?)',
+                (','.join(map(str, clip)),))
+            return cursor.lastrowid
 
 
 def is_blank(image):
@@ -98,7 +149,7 @@ def hash_image(image):
 
 
 def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height):
-    frames_added = 0
+    clip = []
     duplicates = 0
     blanks = 0
 
@@ -121,30 +172,19 @@ def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height):
                 continue
 
             key, added = pikov.add_image(frame)
-            if added:
-                frames_added += 1
-            else:
+            frame_id = pikov.add_frame(key)
+            if not added:
                 duplicates += 1
+            clip.append(frame_id)
 
-    print('Added {} of {} frames ({} duplicates, {} blank)'.format(
-        frames_added, rows * cols, duplicates, blanks))
+    clip_id = pikov.add_clip(clip)
+
+    print('Added {} of {} frames ({} duplicates, {} blank) to clip {}'.format(
+        len(clip), rows * cols, duplicates, blanks, clip_id))
 
 
 def create(pikov_path):
-    conn = sqlite3.connect(pikov_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        'CREATE TABLE image (key TEXT PRIMARY KEY, contents BLOB)')
-    cursor.execute(
-        'CREATE TABLE frame ('
-        'id INTEGER PRIMARY KEY, '
-        'image_key TEXT, '
-        'FOREIGN KEY(image_key) REFERENCES image(key))')
-    cursor.execute(
-        'CREATE TABLE clip ('
-        'id INTEGER PRIMARY KEY, '
-        'sequence TEXT)')
-    conn.commit()
+    Pikov.create(pikov_path)
 
 
 def main():
