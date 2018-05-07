@@ -41,6 +41,7 @@ class Pikov(object):
             'CREATE TABLE frame ('
             'id INTEGER PRIMARY KEY, '
             'image_key TEXT, '
+            'duration_microseconds INTEGER, '
             'FOREIGN KEY(image_key) REFERENCES image(key))')
         cursor.execute(
             'CREATE TABLE clip ('
@@ -75,12 +76,14 @@ class Pikov(object):
             return image_hash, False  # Frame already exists
         return image_hash, True
 
-    def add_frame(self, image_key):
+    def add_frame(self, image_key, duration_microseconds):
         """Add a frame to the Pikov file.
 
         Args:
             image_key (str):
                 An image to use as a frame in a clip.
+            duration_microseconds (int):
+                Number of microseconds to display clip.
 
         Returns:
             int: ID of the frame added.
@@ -88,7 +91,8 @@ class Pikov(object):
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'INSERT INTO frame (image_key) VALUES (?)', (image_key,))
+                'INSERT INTO frame (image_key, duration_microseconds) '
+                'VALUES (?, ?)', (image_key, duration_microseconds))
             return cursor.lastrowid
 
     def add_clip(self, clip):
@@ -148,10 +152,11 @@ def hash_image(image):
     return 'md5-{}'.format(md5.hexdigest())
 
 
-def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height):
+def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height, fps):
     clip = []
     duplicates = 0
     blanks = 0
+    duration_microseconds = int(1000000 / fps)
 
     # Read the Pikov file.
     pikov = Pikov.open(pikov_path)
@@ -172,7 +177,7 @@ def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height):
                 continue
 
             key, added = pikov.add_image(frame)
-            frame_id = pikov.add_frame(key)
+            frame_id = pikov.add_frame(key, duration_microseconds)
             if not added:
                 duplicates += 1
             clip.append(frame_id)
@@ -198,6 +203,8 @@ def main():
     import_clip_parser = subparsers.add_parser(
         'import-clip',
         help='Import a sprite sheet animation as a clip.')
+    import_clip_parser.add_argument(
+        '--fps', help='Frames per second.', type=int, default=12)
     import_clip_parser.add_argument('pikov_path', help='Path to .pikov file.')
     import_clip_parser.add_argument(
         'sprite_sheet_path', help='Path to sprite sheet.')
@@ -211,7 +218,7 @@ def main():
         frame_width, frame_height = map(int, args.frame_size.split('x'))
         import_clip(
             args.pikov_path, args.sprite_sheet_path, frame_width,
-            frame_height)
+            frame_height, args.fps)
     elif args.action is not None:
         raise NotImplementedError(
             'Got unknown action: {}'.format(args.action))
