@@ -145,7 +145,7 @@ def hash_image(image):
             # https://stackoverflow.com/a/31761722/101923
             md5.update(b"%c%c%c%c" % image.getpixel((x, y)))
 
-    return md5.hexdigest()
+    return 'md5-{}'.format(md5.hexdigest())
 
 
 def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height):
