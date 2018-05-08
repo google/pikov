@@ -40,8 +40,11 @@ class Pikov(object):
         cursor.execute(
             'CREATE TABLE frame ('
             'id INTEGER PRIMARY KEY, '
+            'clip_id INTEGER, '
             'image_key TEXT, '
+            'clip_order INTEGER, '
             'duration_microseconds INTEGER, '
+            'FOREIGN KEY(clip_id) REFERENCES clip(id),'
             'FOREIGN KEY(image_key) REFERENCES image(key))')
         cursor.execute(
             'CREATE TABLE clip ('
@@ -76,12 +79,16 @@ class Pikov(object):
             return image_hash, False  # Frame already exists
         return image_hash, True
 
-    def add_frame(self, image_key, duration_microseconds):
+    def add_frame(self, clip_id, image_key, clip_order, duration_microseconds):
         """Add a frame to the Pikov file.
 
         Args:
+            clip_id (int):
+                Clip this frame is a part of.
             image_key (str):
                 An image to use as a frame in a clip.
+            clip_order (int):
+                Integer describing the order that frames appear in a clip.
             duration_microseconds (int):
                 Number of microseconds to display clip.
 
@@ -91,8 +98,10 @@ class Pikov(object):
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'INSERT INTO frame (image_key, duration_microseconds) '
-                'VALUES (?, ?)', (image_key, duration_microseconds))
+                'INSERT INTO frame '
+                '(clip_id, image_key, clip_order, duration_microseconds) '
+                'VALUES (?, ?, ?, ?)',
+                (clip_id, image_key, clip_order, duration_microseconds))
             return cursor.lastrowid
 
     def add_clip(self, clip):
@@ -154,6 +163,7 @@ def hash_image(image):
 
 def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height, fps):
     clip = []
+    images = []
     duplicates = 0
     blanks = 0
     duration_microseconds = int(1000000 / fps)
@@ -177,12 +187,15 @@ def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height, fps):
                 continue
 
             key, added = pikov.add_image(frame)
-            frame_id = pikov.add_frame(key, duration_microseconds)
             if not added:
                 duplicates += 1
-            clip.append(frame_id)
+            images.append(key)
 
     clip_id = pikov.add_clip(clip)
+    for clip_order, image_key in enumerate(images):
+        frame_id = pikov.add_frame(
+            clip_id, image_key, clip_order, duration_microseconds)
+        clip.append(frame_id)
 
     print('Added {} of {} frames ({} duplicates, {} blank) to clip {}'.format(
         len(clip), rows * cols, duplicates, blanks, clip_id))
