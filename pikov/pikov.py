@@ -48,8 +48,7 @@ class Pikov(object):
             'FOREIGN KEY(image_key) REFERENCES image(key))')
         cursor.execute(
             'CREATE TABLE clip ('
-            'id INTEGER PRIMARY KEY, '
-            'sequence TEXT)')
+            'id INTEGER PRIMARY KEY)')
         pikov._connection.commit()
 
     def add_image(self, image):
@@ -104,20 +103,15 @@ class Pikov(object):
                 (clip_id, image_key, clip_order, duration_microseconds))
             return cursor.lastrowid
 
-    def add_clip(self, clip):
+    def add_clip(self):
         """Add an animation clip to the Pikov file.
-
-        Args:
-            clip (List[int]): A list of frame IDs.
 
         Returns:
             int: ID of the clip added.
         """
         with self._connection:
             cursor = self._connection.cursor()
-            cursor.execute(
-                'INSERT INTO clip (sequence) VALUES (?)',
-                (','.join(map(str, clip)),))
+            cursor.execute('INSERT INTO clip DEFAULT VALUES')
             return cursor.lastrowid
 
 
@@ -161,11 +155,8 @@ def hash_image(image):
     return 'md5-{}'.format(md5.hexdigest())
 
 
-def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height, fps):
-    clip = []
-    images = []
-    duplicates = 0
-    blanks = 0
+def import_clip(
+        pikov_path, sprite_sheet_path, frame_width, frame_height, fps, frames):
     duration_microseconds = int(1000000 / fps)
 
     # Read the Pikov file.
@@ -176,29 +167,36 @@ def import_clip(pikov_path, sprite_sheet_path, frame_width, frame_height, fps):
     sheet_width, sheet_height = sheet.size
     rows = sheet_height // frame_height
     cols = sheet_width // frame_width
-    for row in range(rows):
-        for col in range(cols):
-            frame = sheet.crop(box=(
-                col * frame_width, row * frame_height,
-                (col + 1) * frame_width, (row + 1) * frame_height,))
 
-            if is_blank(frame):
-                blanks += 1
-                continue
+    # Add images to Pikov.
+    images = {}
+    added = 0
+    duplicates = 0
+    frames_set = frozenset(frames)
+    for spritesheet_frame in frames_set:
+        row = spritesheet_frame // cols
+        col = spritesheet_frame % cols
+        frame = sheet.crop(box=(
+            col * frame_width, row * frame_height,
+            (col + 1) * frame_width, (row + 1) * frame_height,))
 
-            key, added = pikov.add_image(frame)
-            if not added:
-                duplicates += 1
-            images.append(key)
+        image_key, image_added = pikov.add_image(frame)
+        if image_added:
+            added += 1
+        else:
+            duplicates += 1
+        images[spritesheet_frame] = image_key
 
-    clip_id = pikov.add_clip(clip)
-    for clip_order, image_key in enumerate(images):
-        frame_id = pikov.add_frame(
+    # Create clip
+    clip_id = pikov.add_clip()
+    for clip_order, spritesheet_frame in enumerate(frames):
+        image_key = images[spritesheet_frame]
+        pikov.add_frame(
             clip_id, image_key, clip_order, duration_microseconds)
-        clip.append(frame_id)
 
-    print('Added {} of {} frames ({} duplicates, {} blank) to clip {}'.format(
-        len(clip), rows * cols, duplicates, blanks, clip_id))
+    print('Added {} of {} images ({} duplicates)'.format(
+        added, len(frames_set), duplicates))
+    print('Created clip {} with {} frames.'.format(clip_id, len(frames)))
 
 
 def create(pikov_path):
@@ -223,15 +221,22 @@ def main():
         'sprite_sheet_path', help='Path to sprite sheet.')
     import_clip_parser.add_argument(
         'frame_size', help='Size of frame. WIDTHxHEIGHT. Example: 8x8')
+    import_clip_parser.add_argument(
+        'frames',
+        help=(
+            'List of comma-separated frame IDs to include in clip. '
+            'Frames are 0-indexed from left-to-right, top-to-bottom.'
+        ))
 
     args = parser.parse_args()
     if args.action == 'create':
         create(args.pikov_path)
     elif args.action == 'import-clip':
         frame_width, frame_height = map(int, args.frame_size.split('x'))
+        frames = list(map(int, args.frames.split(',')))
         import_clip(
             args.pikov_path, args.sprite_sheet_path, frame_width,
-            frame_height, args.fps)
+            frame_height, args.fps, frames)
     elif args.action is not None:
         raise NotImplementedError(
             'Got unknown action: {}'.format(args.action))
