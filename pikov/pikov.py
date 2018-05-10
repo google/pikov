@@ -39,13 +39,13 @@ class Pikov(object):
             'CREATE TABLE image (key TEXT PRIMARY KEY, contents BLOB)')
         cursor.execute(
             'CREATE TABLE frame ('
-            'id INTEGER PRIMARY KEY, '
             'clip_id INTEGER, '
-            'image_key TEXT, '
             'clip_order INTEGER, '
+            'image_key TEXT, '
             'duration_microseconds INTEGER, '
-            'FOREIGN KEY(clip_id) REFERENCES clip(id),'
-            'FOREIGN KEY(image_key) REFERENCES image(key))')
+            'FOREIGN KEY(clip_id) REFERENCES clip(id), '
+            'FOREIGN KEY(image_key) REFERENCES image(key), '
+            'PRIMARY KEY (clip_id, clip_order));')
         cursor.execute(
             'CREATE TABLE clip ('
             'id INTEGER PRIMARY KEY)')
@@ -78,18 +78,21 @@ class Pikov(object):
             return image_hash, False  # Frame already exists
         return image_hash, True
 
-    def add_frame(self, clip_id, image_key, clip_order, duration_microseconds):
+    def add_frame(
+            self, clip_id, clip_order, image_key,
+            duration_microseconds=100000):
         """Add a frame to the Pikov file.
 
         Args:
             clip_id (int):
                 Clip this frame is a part of.
-            image_key (str):
-                An image to use as a frame in a clip.
             clip_order (int):
                 Integer describing the order that frames appear in a clip.
-            duration_microseconds (int):
-                Number of microseconds to display clip.
+            image_key (str):
+                An image to use as a frame in a clip.
+            duration_microseconds (int, optional):
+                Number of microseconds to display clip. Defaults to 100,000
+                (10 frames per second).
 
         Returns:
             int: ID of the frame added.
@@ -98,9 +101,9 @@ class Pikov(object):
             cursor = self._connection.cursor()
             cursor.execute(
                 'INSERT INTO frame '
-                '(clip_id, image_key, clip_order, duration_microseconds) '
+                '(clip_id, clip_order, image_key, duration_microseconds) '
                 'VALUES (?, ?, ?, ?)',
-                (clip_id, image_key, clip_order, duration_microseconds))
+                (clip_id, clip_order, image_key, duration_microseconds))
             return cursor.lastrowid
 
     def add_clip(self):
@@ -113,25 +116,6 @@ class Pikov(object):
             cursor = self._connection.cursor()
             cursor.execute('INSERT INTO clip DEFAULT VALUES')
             return cursor.lastrowid
-
-
-def is_blank(image):
-    """Determine if an image is blank.
-
-    Args:
-        frame (PIL.Image.Image):
-            A frame image to add to the Pikov file.
-
-    Returns:
-        bool:
-            True if the image contains only a single solid color.
-    """
-    solid_color = image.getpixel((0, 0))
-    for x in range(image.size[0]):
-        for y in range(image.size[1]):
-            if solid_color != image.getpixel((x, y)):
-                return False
-    return True
 
 
 def hash_image(image):
@@ -192,7 +176,7 @@ def import_clip(
     for clip_order, spritesheet_frame in enumerate(frames):
         image_key = images[spritesheet_frame]
         pikov.add_frame(
-            clip_id, image_key, clip_order, duration_microseconds)
+            clip_id, clip_order, image_key, duration_microseconds)
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
