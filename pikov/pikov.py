@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import argparse
+import datetime
 import hashlib
 import io
 import sqlite3
 
-from PIL import Image
+import PIL.Image
 
 
 class Pikov(object):
@@ -78,9 +79,7 @@ class Pikov(object):
             return image_hash, False  # Frame already exists
         return image_hash, True
 
-    def add_frame(
-            self, clip_id, clip_order, image_key,
-            duration_microseconds=100000):
+    def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
 
         Args:
@@ -90,13 +89,17 @@ class Pikov(object):
                 Integer describing the order that frames appear in a clip.
             image_key (str):
                 An image to use as a frame in a clip.
-            duration_microseconds (int, optional):
-                Number of microseconds to display clip. Defaults to 100,000
-                (10 frames per second).
+            duration (datetime.timedelta, optional):
+                Duration to display the frame within a clip. Defaults to
+                100,000 microseconds (10 frames per second).
 
         Returns:
-            int: ID of the frame added.
+            Frame: The frame added.
         """
+        if duration is None:
+            duration = datetime.timedelta(microseconds=100000)
+        duration_microseconds = int(duration.total_seconds() * 1000000)
+
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
@@ -141,13 +144,13 @@ def hash_image(image):
 
 def import_clip(
         pikov_path, sprite_sheet_path, frame_width, frame_height, fps, frames):
-    duration_microseconds = int(1000000 / fps)
+    duration = datetime.timedelta(seconds=1) / fps
 
     # Read the Pikov file.
     pikov = Pikov.open(pikov_path)
 
     # Chop the sprite sheet into frames.
-    sheet = Image.open(sprite_sheet_path)
+    sheet = PIL.Image.open(sprite_sheet_path)
     sheet_width, sheet_height = sheet.size
     rows = sheet_height // frame_height
     cols = sheet_width // frame_width
@@ -175,8 +178,7 @@ def import_clip(
     clip_id = pikov.add_clip()
     for clip_order, spritesheet_frame in enumerate(frames):
         image_key = images[spritesheet_frame]
-        pikov.add_frame(
-            clip_id, clip_order, image_key, duration_microseconds)
+        pikov.add_frame(clip_id, clip_order, image_key, duration)
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
