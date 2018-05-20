@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import argparse
+import base64
 import datetime
 import hashlib
 import io
@@ -34,11 +35,52 @@ class Image(object):
 
     Args:
         key (str): The image identifier.
-        contents (bytes, optional): Image contents (assumed to be PNG).
+        contents (bytes, optional): Image contents.
+        content_type (str, optional): Image MIME-type.
     """
-    def __init__(self, key, contents=None):
+    def __init__(self, key, content_type=None, contents=None):
         self.key = key
+        self.content_type = content_type
         self.contents = contents
+
+    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
+        data = {}
+
+        def should_include(mime):
+            if not mime:
+                return False
+            included = not include or mime in include
+            not_excluded = not exclude or mime not in exclude
+            return included and not_excluded
+
+        if should_include(self.content_type) and self.contents:
+            data[self.content_type] = self.contents
+
+        if should_include('text/html'):
+            data['text/html'] = (
+                f'<table><tr><td>key</td><td>{self.key}</td></tr>'
+                f'<tr><td>content_type</td><td>{self.content_type}</td></tr>'
+                '<tr><td>contents</td>'
+                f'<td>{self._html_img_or_none()}</td></tr>'
+                '</table>'
+            )
+
+        return data
+
+    def _html_img_or_none(self):
+        if not self.content_type or not self.contents:
+            return None
+        contents_base64 = base64.b64encode(self.contents).decode('utf-8')
+        pixel_art_css = (
+            'image-rendering: -moz-crisp-edges; '
+            'image-rendering: crisp-edges; '
+            'image-rendering: pixelated; '
+        )
+        return (
+            f'<img alt="image with key {self.key}" '
+            f'src="data:{self.content_type};base64,{contents_base64}" '
+            f'style="width: 5em; {pixel_art_css}">'
+        )
 
 
 class Frame(object):
@@ -86,7 +128,10 @@ class Pikov(object):
         pikov = cls.open(path)
         cursor = pikov._connection.cursor()
         cursor.execute(
-            'CREATE TABLE image (key TEXT PRIMARY KEY, contents BLOB)')
+            'CREATE TABLE image ('
+            'key TEXT PRIMARY KEY, '
+            'contents BLOB, '
+            'content_type STRING)')
         cursor.execute(
             'CREATE TABLE frame ('
             'clip_id INTEGER, '
@@ -124,8 +169,9 @@ class Pikov(object):
             with self._connection:
                 cursor = self._connection.cursor()
                 cursor.execute(
-                    'INSERT INTO image (key, contents) '
-                    'VALUES (?, ?)', (image_hash, image_fp.read()))
+                    'INSERT INTO image (key, contents, content_type) '
+                    'VALUES (?, ?, ?)',
+                    (image_hash, image_fp.read(), 'image/png'))
         except sqlite3.IntegrityError:
             return image_hash, False  # Frame already exists
         return image_hash, True
@@ -145,9 +191,9 @@ class Pikov(object):
             NotFound: If image with ``key`` is not found.
         """
         if include_contents:
-            sql = 'SELECT key, contents FROM image WHERE key = ?'
+            sql = 'SELECT content_type, contents FROM image WHERE key = ?'
         else:
-            sql = 'SELECT key FROM image WHERE key = ?'
+            sql = 'SELECT content_type FROM image WHERE key = ?'
 
         with self._connection:
             cursor = self._connection.cursor()
@@ -158,7 +204,9 @@ class Pikov(object):
                 raise NotFound(
                     'Could not find image with key "{}"'.format(key))
 
-        return Image(*image_row)
+        if include_contents:
+            return Image(key, content_type=image_row[0], contents=image_row[1])
+        return Image(key, content_type=image_row[0])
 
     def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
