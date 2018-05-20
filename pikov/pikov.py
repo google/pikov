@@ -115,8 +115,9 @@ class Pikov(object):
                 indicating True if the image was added or False for
                 duplicates.
         """
-        image_io = io.BytesIO()
-        image.save(image_io, format='PNG')
+        image_fp = io.BytesIO()
+        image.save(image_fp, format='PNG')
+        image_fp.seek(0)
         image_hash = hash_image(image)
 
         try:
@@ -124,7 +125,7 @@ class Pikov(object):
                 cursor = self._connection.cursor()
                 cursor.execute(
                     'INSERT INTO image (key, contents) '
-                    'VALUES (?, ?)', (image_hash, image_io.read()))
+                    'VALUES (?, ?)', (image_hash, image_fp.read()))
         except sqlite3.IntegrityError:
             return image_hash, False  # Frame already exists
         return image_hash, True
