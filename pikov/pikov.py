@@ -17,6 +17,7 @@ import base64
 import datetime
 import hashlib
 import io
+import functools
 import sqlite3
 
 import PIL.Image
@@ -45,13 +46,8 @@ class Image(object):
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
-
-        def should_include(mime):
-            if not mime:
-                return False
-            included = not include or mime in include
-            not_excluded = not exclude or mime not in exclude
-            return included and not_excluded
+        should_include = functools.partial(
+            _should_include, include=include, exclude=exclude)
 
         if should_include(self.content_type) and self.contents:
             data[self.content_type] = self.contents
@@ -98,6 +94,33 @@ class Frame(object):
         self.clip_order = clip_order
         self.image = image
         self.duration = duration
+
+    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
+        data = {}
+        should_include = functools.partial(
+            _should_include, include=include, exclude=exclude)
+
+        # Frame can be represented by just its image if the image content-type
+        # is desired.
+        if self.image and should_include(self.image.content_type) \
+                and self.image.contents:
+            data[self.image.content_type] = self.image.contents
+
+        if should_include('text/html'):
+            image_html = None
+            if self.image is not None:
+                image_html = self.image._repr_mimebundle_(
+                    include='text/html')['text/html']
+            data['text/html'] = (
+                f'<table><tr><td>clip_id</td><td>{self.clip_id}</td></tr>'
+                f'<tr><td>clip_order</td><td>{self.clip_order}</td></tr>'
+                '<tr><td>duration</td>'
+                f'<td>{self.duration.total_seconds()} seconds</td></tr>'
+                f'<tr><td>image</td><td>{image_html}</td></tr>'
+                '</table>'
+            )
+
+        return data
 
 
 class Clip(object):
@@ -299,6 +322,14 @@ class Pikov(object):
                     'Could not find clip with clip_id "{}"'.format(clip_id))
 
         return Clip(clip_id, self.list_frames(clip_id))
+
+
+def _should_include(mime, include=None, exclude=None):
+    if not mime:
+        return False
+    included = not include or mime in include
+    not_excluded = not exclude or mime not in exclude
+    return included and not_excluded
 
 
 def hash_image(image):
