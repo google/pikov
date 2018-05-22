@@ -29,6 +29,7 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     install_requires=[
         'Pillow >= 5.1.0, < 6.0dev',
+        'dataclasses>=0.6;python_version<"3.7"'
     ],
     license='Apache 2.0',
     long_description=readme,

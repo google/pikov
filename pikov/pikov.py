@@ -15,10 +15,12 @@
 import argparse
 import base64
 import datetime
+import dataclasses
 import hashlib
 import io
 import functools
 import sqlite3
+import typing
 
 import PIL.Image
 
@@ -31,18 +33,19 @@ class NotFound(PikovError):
     pass
 
 
-class Image(object):
+@dataclasses.dataclass
+class Image:
     """An image.
 
     Args:
         key (str): The image identifier.
-        contents (bytes, optional): Image contents.
         content_type (str, optional): Image MIME-type.
+        contents (bytes, optional): Image contents.
     """
-    def __init__(self, key, content_type=None, contents=None):
-        self.key = key
-        self.content_type = content_type
-        self.contents = contents
+    key: str
+    content_type: typing.Optional[str] = None
+    contents: typing.Optional[bytes] = dataclasses.field(
+        default=None, repr=False)
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
@@ -228,8 +231,9 @@ class Pikov(object):
                     'Could not find image with key "{}"'.format(key))
 
         if include_contents:
-            return Image(key, content_type=image_row[0], contents=image_row[1])
-        return Image(key, content_type=image_row[0])
+            return Image(
+                key=key, content_type=image_row[0], contents=image_row[1])
+        return Image(key=key, content_type=image_row[0])
 
     def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
