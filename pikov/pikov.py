@@ -15,12 +15,10 @@
 import argparse
 import base64
 import datetime
-import dataclasses
 import hashlib
 import io
 import functools
 import sqlite3
-import typing
 
 import PIL.Image
 
@@ -33,19 +31,52 @@ class NotFound(PikovError):
     pass
 
 
-@dataclasses.dataclass
 class Image:
-    """An image.
+    """An (immutable) image.
 
     Args:
+        connection (sqlite3.Connection):
+            A connection to the SQLite database this image belongs to.
         key (str): The image identifier.
-        content_type (str, optional): Image MIME-type.
-        contents (bytes, optional): Image contents.
     """
-    key: str
-    content_type: typing.Optional[str] = None
-    contents: typing.Optional[bytes] = dataclasses.field(
-        default=None, repr=False)
+    def __init__(self, connection: sqlite3.Connection, key: str):
+        self._connection = connection
+        self._key = key
+        self._content_type = None
+        self._contents = None
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    @property
+    def content_type(self) -> str:
+        if self._content_type is not None:
+            return self._content_type
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT content_type FROM image WHERE key = ?;', (self._key,))
+            row = cursor.fetchone()
+            self._content_type = row[0]
+            return self._content_type
+
+    @property
+    def contents(self) -> bytes:
+        if self._contents is not None:
+            return self._contents
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT contents FROM image WHERE key = ?;', (self._key,))
+            row = cursor.fetchone()
+            self._contents = row[0]
+            return self._contents
+
+    def __repr__(self):
+        return f"Image(key='{self._key}')"
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
@@ -60,15 +91,13 @@ class Image:
                 f'<table><tr><td>key</td><td>{self.key}</td></tr>'
                 f'<tr><td>content_type</td><td>{self.content_type}</td></tr>'
                 '<tr><td>contents</td>'
-                f'<td>{self._html_img_or_none()}</td></tr>'
+                f'<td>{self._html_contents()}</td></tr>'
                 '</table>'
             )
 
         return data
 
-    def _html_img_or_none(self):
-        if not self.content_type or not self.contents:
-            return None
+    def _html_contents(self):
         contents_base64 = base64.b64encode(self.contents).decode('utf-8')
         pixel_art_css = (
             'image-rendering: -moz-crisp-edges; '
@@ -202,13 +231,11 @@ class Pikov(object):
             return image_hash, False  # Frame already exists
         return image_hash, True
 
-    def get_image(self, key, include_contents=True):
+    def get_image(self, key):
         """Add an image to the Pikov file.
 
         Args:
             key (str): Content-based key for image file.
-            include_contents (bool, optional):
-                Include content bytes in the fetched image.
 
         Returns:
             Image: The image loaded from the Pikov file.
@@ -216,24 +243,16 @@ class Pikov(object):
         Raises:
             NotFound: If image with ``key`` is not found.
         """
-        if include_contents:
-            sql = 'SELECT content_type, contents FROM image WHERE key = ?'
-        else:
-            sql = 'SELECT content_type FROM image WHERE key = ?'
-
         with self._connection:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (key,))
+            cursor.execute('SELECT key FROM image WHERE key = ?', (key,))
             image_row = cursor.fetchone()
 
             if not image_row:
                 raise NotFound(
                     'Could not find image with key "{}"'.format(key))
 
-        if include_contents:
-            return Image(
-                key=key, content_type=image_row[0], contents=image_row[1])
-        return Image(key=key, content_type=image_row[0])
+        return Image(connection=self._connection, key=key)
 
     def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
@@ -263,7 +282,11 @@ class Pikov(object):
                 'VALUES (?, ?, ?, ?)',
                 (clip_id, clip_order, image_key, duration_microseconds))
 
-        return Frame(clip_id, clip_order, Image(image_key), duration)
+        return Frame(
+            clip_id,
+            clip_order,
+            Image(connection=self._connection, key=image_key),
+            duration)
 
     def list_frames(self, clip_id):
         """Return frames associated with ``clip_id`` in order.

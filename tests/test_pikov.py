@@ -85,10 +85,3 @@ def test_get_image_found(pkv, pil_image):
     assert img.key == key
     assert img.contents is not None
     assert len(img.contents) > 0
-
-
-def test_get_image_found_nocontents(pkv, pil_image):
-    key, is_added = pkv.add_image(pil_image)
-    img = pkv.get_image(key, include_contents=False)
-    assert img.key == key
-    assert img.contents is None
