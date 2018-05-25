@@ -66,11 +66,11 @@ def test_get_clip_with_frames(pkv, image_key):
     clip = pkv.get_clip(clip_id)
     assert clip.id == clip_id
     assert len(clip.frames) == 2
-    assert all([frame.clip_id == clip_id for frame in clip.frames])
+    assert all([frame.frame_id[0] == clip_id for frame in clip.frames])
     assert all([frame.image.key == image_key for frame in clip.frames])
     assert all([frame.image.contents is not None for frame in clip.frames])
-    assert clip.frames[0].clip_order == 0
-    assert clip.frames[1].clip_order == 1
+    assert clip.frames[0].frame_id[1] == 0
+    assert clip.frames[1].frame_id[1] == 1
     assert clip.frames[1].duration == two_tenths_second
 
 

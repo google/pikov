@@ -19,6 +19,7 @@ import hashlib
 import io
 import functools
 import sqlite3
+import typing
 
 import PIL.Image
 
@@ -115,17 +116,52 @@ class Frame(object):
     """An animation frame.
 
     Args:
-        clip_id (int): The identifier of the clip the frame belongs to.
-        clip_order (int): Where this frame appears within the clip.
-        image (Image): Image content on the frame.
-        duration (datetime.timedelta):
-            Time duration to display the animation frame.
+        connection (sqlite3.Connection):
+            A connection to the SQLite database this frame belongs to.
+        frame_id (Tuple[int, int]):
+            The primary key of this frame.
     """
-    def __init__(self, clip_id, clip_order, image, duration):
-        self.clip_id = clip_id
-        self.clip_order = clip_order
-        self.image = image
-        self.duration = duration
+    def __init__(
+            self,
+            connection: sqlite3.Connection,
+            frame_id: typing.Tuple[int, int]):
+        self._connection = connection
+        self._frame_id = frame_id
+
+    @property
+    def frame_id(self) -> typing.Tuple[int, int]:
+        return self._frame_id
+
+    @property
+    def image(self) -> Image:
+        """image (Image): Image content on the frame."""
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT image_key FROM frame '
+                'WHERE clip_id = ? AND clip_order = ?;',
+                self._frame_id)
+            row = cursor.fetchone()
+            image_key = row[0]
+            return Image(self._connection, image_key)
+
+    @property
+    def duration(self) -> datetime.timedelta:
+        """duration (datetime.timedelta): Time duration to display the
+        animation frame.
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT duration_microseconds FROM frame '
+                'WHERE clip_id = ? AND clip_order = ?;',
+                self._frame_id)
+            row = cursor.fetchone()
+            duration_microseconds = row[0]
+            return datetime.timedelta(microseconds=duration_microseconds)
+
+    def __repr__(self):
+        return f"Frame(frame_id='{self._frame_id}')"
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
@@ -144,8 +180,7 @@ class Frame(object):
                 image_html = self.image._repr_mimebundle_(
                     include='text/html')['text/html']
             data['text/html'] = (
-                f'<table><tr><td>clip_id</td><td>{self.clip_id}</td></tr>'
-                f'<tr><td>clip_order</td><td>{self.clip_order}</td></tr>'
+                f'<table><tr><td>frame_id</td><td>{self._frame_id}</td></tr>'
                 '<tr><td>duration</td>'
                 f'<td>{self.duration.total_seconds()} seconds</td></tr>'
                 f'<tr><td>image</td><td>{image_html}</td></tr>'
@@ -252,7 +287,7 @@ class Pikov(object):
                 raise NotFound(
                     'Could not find image with key "{}"'.format(key))
 
-        return Image(connection=self._connection, key=key)
+        return Image(self._connection, key)
 
     def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
@@ -282,11 +317,7 @@ class Pikov(object):
                 'VALUES (?, ?, ?, ?)',
                 (clip_id, clip_order, image_key, duration_microseconds))
 
-        return Frame(
-            clip_id,
-            clip_order,
-            Image(connection=self._connection, key=image_key),
-            duration)
+        return Frame(self._connection, (clip_id, clip_order))
 
     def list_frames(self, clip_id):
         """Return frames associated with ``clip_id`` in order.
@@ -300,7 +331,7 @@ class Pikov(object):
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'SELECT clip_order, image_key, duration_microseconds '
+                'SELECT clip_order '
                 'FROM frame '
                 'WHERE clip_id = ? '
                 'ORDER BY clip_order ASC;',
@@ -309,10 +340,8 @@ class Pikov(object):
 
         frames = []
         for row in frame_rows:
-            clip_order, image_key, duration_microseconds = row
-            duration = datetime.timedelta(microseconds=duration_microseconds)
-            image = self.get_image(image_key)
-            frames.append(Frame(clip_id, clip_order, image, duration))
+            clip_order = row[0]
+            frames.append(Frame(self._connection, (clip_id, clip_order)))
         return frames
 
     def add_clip(self):
