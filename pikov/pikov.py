@@ -118,19 +118,19 @@ class Frame(object):
     Args:
         connection (sqlite3.Connection):
             A connection to the SQLite database this frame belongs to.
-        frame_id (Tuple[int, int]):
+        id (Tuple[int, int]):
             The primary key of this frame.
     """
     def __init__(
             self,
             connection: sqlite3.Connection,
-            frame_id: typing.Tuple[int, int]):
+            id: typing.Tuple[int, int]):
         self._connection = connection
-        self._frame_id = frame_id
+        self._id = id
 
     @property
-    def frame_id(self) -> typing.Tuple[int, int]:
-        return self._frame_id
+    def id(self) -> typing.Tuple[int, int]:
+        return self._id
 
     @property
     def image(self) -> Image:
@@ -140,7 +140,7 @@ class Frame(object):
             cursor.execute(
                 'SELECT image_key FROM frame '
                 'WHERE clip_id = ? AND clip_order = ?;',
-                self._frame_id)
+                self._id)
             row = cursor.fetchone()
             image_key = row[0]
             return Image(self._connection, image_key)
@@ -155,13 +155,13 @@ class Frame(object):
             cursor.execute(
                 'SELECT duration_microseconds FROM frame '
                 'WHERE clip_id = ? AND clip_order = ?;',
-                self._frame_id)
+                self._id)
             row = cursor.fetchone()
             duration_microseconds = row[0]
             return datetime.timedelta(microseconds=duration_microseconds)
 
     def __repr__(self):
-        return f"Frame(frame_id='{self._frame_id}')"
+        return f"Frame(id='{self._id}')"
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
@@ -180,7 +180,7 @@ class Frame(object):
                 image_html = self.image._repr_mimebundle_(
                     include='text/html')['text/html']
             data['text/html'] = (
-                f'<table><tr><td>frame_id</td><td>{self._frame_id}</td></tr>'
+                f'<table><tr><td>id</td><td>{self._id}</td></tr>'
                 '<tr><td>duration</td>'
                 f'<td>{self.duration.total_seconds()} seconds</td></tr>'
                 f'<tr><td>image</td><td>{image_html}</td></tr>'
@@ -194,12 +194,80 @@ class Clip(object):
     """An animation clip.
 
     Args:
+        connection (sqlite3.Connection):
+            A connection to the SQLite database this frame belongs to.
         id (int): The clip identifier.
-        frames (List[Frame]): Frames which the clip contains.
     """
-    def __init__(self, id, frames):
-        self.id = id
-        self.frames = frames
+    def __init__(
+            self,
+            connection: sqlite3.Connection,
+            id: typing.Tuple[int, int]):
+        self._connection = connection
+        self._id = id
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    @property
+    def frames(self) -> typing.Tuple[Frame, ...]:
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT clip_order '
+                'FROM frame '
+                'WHERE clip_id = ? '
+                'ORDER BY clip_order ASC;',
+                (self._id,))
+            return tuple((
+                Frame(self._connection, (self._id, row[0]))
+                for row in cursor.fetchall()
+            ))
+
+    def append_frame(
+            self,
+            image_key: str,
+            duration: typing.Optional[datetime.timedelta]=None):
+        """Add a frame to the end of this clip.
+
+        Args:
+            image_key (str):
+                An image to use as a frame in a clip.
+            duration (datetime.timedelta, optional):
+                Duration to display the frame within a clip. Defaults to
+                100,000 microseconds (10 frames per second).
+
+        Returns:
+            Frame: The frame added.
+        """
+        if duration is None:
+            duration = datetime.timedelta(microseconds=100000)
+        duration_microseconds = int(duration.total_seconds() * 1000000)
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute("BEGIN")
+
+            # What should the next clip_order be?
+            cursor.execute(
+                'SELECT MAX(clip_order) '
+                'FROM frame '
+                'WHERE clip_id = ?;',
+                (self._id,))
+            row = cursor.fetchone()
+            previous_clip_order = row[0]
+            if previous_clip_order is None:
+                previous_clip_order = -1
+            clip_order = previous_clip_order + 1
+
+            # Add the new Frame.
+            cursor.execute(
+                'INSERT INTO frame '
+                '(clip_id, clip_order, image_key, duration_microseconds) '
+                'VALUES (?, ?, ?, ?)',
+                (self._id, clip_order, image_key, duration_microseconds))
+
+        return Frame(self._connection, (self._id, clip_order))
 
 
 class Pikov(object):
@@ -209,6 +277,9 @@ class Pikov(object):
     @classmethod
     def open(cls, path):
         connection = sqlite3.connect(path)
+        # Allow for manual BEGIN/END transcactions.
+        # https://stackoverflow.com/a/24374430/101923
+        connection.isolation_level = None
         cursor = connection.cursor()
         cursor.execute('PRAGMA foreign_keys = ON;')
         return cls(connection)
@@ -289,71 +360,16 @@ class Pikov(object):
 
         return Image(self._connection, key)
 
-    def add_frame(self, clip_id, clip_order, image_key, duration=None):
-        """Add a frame to the Pikov file.
-
-        Args:
-            clip_id (int): Clip this frame is a part of.
-            clip_order (int):
-                Integer describing the order that frames appear in a clip.
-            image_key (str):
-                An image to use as a frame in a clip.
-            duration (datetime.timedelta, optional):
-                Duration to display the frame within a clip. Defaults to
-                100,000 microseconds (10 frames per second).
-
-        Returns:
-            Frame: The frame added (does not include image contents).
-        """
-        if duration is None:
-            duration = datetime.timedelta(microseconds=100000)
-        duration_microseconds = int(duration.total_seconds() * 1000000)
-
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute(
-                'INSERT INTO frame '
-                '(clip_id, clip_order, image_key, duration_microseconds) '
-                'VALUES (?, ?, ?, ?)',
-                (clip_id, clip_order, image_key, duration_microseconds))
-
-        return Frame(self._connection, (clip_id, clip_order))
-
-    def list_frames(self, clip_id):
-        """Return frames associated with ``clip_id`` in order.
-
-        Args:
-            clip_id (int): Clip the frames are a part of.
-
-        Returns:
-            List[Frame]: A list of frames associated with the clip, in order.
-        """
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute(
-                'SELECT clip_order '
-                'FROM frame '
-                'WHERE clip_id = ? '
-                'ORDER BY clip_order ASC;',
-                (clip_id,))
-            frame_rows = cursor.fetchall()
-
-        frames = []
-        for row in frame_rows:
-            clip_order = row[0]
-            frames.append(Frame(self._connection, (clip_id, clip_order)))
-        return frames
-
     def add_clip(self):
         """Add an animation clip to the Pikov file.
 
         Returns:
-            int: ID of the clip added.
+            Clip: The clip added.
         """
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute('INSERT INTO clip DEFAULT VALUES')
-            return cursor.lastrowid
+            return Clip(self._connection, cursor.lastrowid)
 
     def get_clip(self, clip_id):
         """Get the animation clip with a specific ID.
@@ -377,7 +393,7 @@ class Pikov(object):
                 raise NotFound(
                     'Could not find clip with clip_id "{}"'.format(clip_id))
 
-        return Clip(clip_id, self.list_frames(clip_id))
+        return Clip(self._connection, clip_id)
 
 
 def _should_include(mime, include=None, exclude=None):

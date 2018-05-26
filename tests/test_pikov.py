@@ -45,32 +45,36 @@ def image_key(pkv, pil_image):
     return key
 
 
+@pytest.fixture
+def clip_id(pkv):
+    clip = pkv.add_clip()
+    return clip.id
+
+
 def test_get_clip_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_clip(999)
 
 
-def test_get_clip_no_frames(pkv):
-    clip_id = pkv.add_clip()
+def test_get_clip_no_frames(pkv, clip_id):
     clip = pkv.get_clip(clip_id)
     assert clip.id == clip_id
     assert len(clip.frames) == 0
 
 
-def test_get_clip_with_frames(pkv, image_key):
-    two_tenths_second = datetime.timedelta(microseconds=200000)
-    clip_id = pkv.add_clip()
-    pkv.add_frame(clip_id, 0, image_key)
-    pkv.add_frame(
-        clip_id, 1, image_key, duration=two_tenths_second)
+def test_get_clip_with_frames(pkv, clip_id, image_key):
     clip = pkv.get_clip(clip_id)
+    clip.append_frame(image_key)
+    two_tenths_second = datetime.timedelta(microseconds=200000)
+    clip.append_frame(image_key, duration=two_tenths_second)
+
     assert clip.id == clip_id
     assert len(clip.frames) == 2
-    assert all([frame.frame_id[0] == clip_id for frame in clip.frames])
+    assert all([frame.id[0] == clip_id for frame in clip.frames])
     assert all([frame.image.key == image_key for frame in clip.frames])
     assert all([frame.image.contents is not None for frame in clip.frames])
-    assert clip.frames[0].frame_id[1] == 0
-    assert clip.frames[1].frame_id[1] == 1
+    assert clip.frames[0].id[1] == 0
+    assert clip.frames[1].id[1] == 1
     assert clip.frames[1].duration == two_tenths_second
 
 
