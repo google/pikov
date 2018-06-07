@@ -24,6 +24,13 @@ import typing
 import PIL.Image
 
 
+PIXEL_ART_CSS = (
+    'image-rendering: -moz-crisp-edges; '
+    'image-rendering: crisp-edges; '
+    'image-rendering: pixelated; '
+)
+
+
 class PikovError(Exception):
     pass
 
@@ -100,15 +107,10 @@ class Image:
 
     def _html_contents(self):
         contents_base64 = base64.b64encode(self.contents).decode('utf-8')
-        pixel_art_css = (
-            'image-rendering: -moz-crisp-edges; '
-            'image-rendering: crisp-edges; '
-            'image-rendering: pixelated; '
-        )
         return (
             f'<img alt="image with key {self.key}" '
             f'src="data:{self.content_type};base64,{contents_base64}" '
-            f'style="width: 5em; {pixel_art_css}">'
+            f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
 
@@ -201,7 +203,7 @@ class Clip(object):
     def __init__(
             self,
             connection: sqlite3.Connection,
-            id: typing.Tuple[int, int]):
+            id: int):
         self._connection = connection
         self._id = id
 
@@ -268,6 +270,66 @@ class Clip(object):
                 (self._id, clip_order, image_key, duration_microseconds))
 
         return Frame(self._connection, (self._id, clip_order))
+
+    def _as_gif(self):
+        """Write clip to a GIF (requires Pillow).
+
+        Returns:
+            Optional[bytes]:
+                Contents of a GIF filrendering of the clip or ``None`` if the
+                clip contains no image frames.
+        """
+
+        frames = self.frames
+        if not frames:
+            return None
+
+        first_img = PIL.Image.open(io.BytesIO(frames[0].image.contents))
+        imgs = []
+        for frame in frames[1:]:
+            in_file = io.BytesIO(frame.image.contents)
+            imgs.append(PIL.Image.open(in_file))
+
+        output = io.BytesIO()
+        first_img.save(
+            output, format='gif', save_all=True, append_images=imgs, loop=0)
+        return output.getvalue()
+
+    def _as_gif_html(self):
+        gif_contents = self._as_gif()
+        if not gif_contents:
+            return None
+
+        contents_base64 = base64.b64encode(gif_contents).decode('utf-8')
+        return (
+            f'<img alt="clip with ID {self._id}" '
+            f'src="data:image/gif;base64,{contents_base64}" '
+            f'style="width: 5em; {PIXEL_ART_CSS}">'
+        )
+
+    def __repr__(self):
+        return f"Clip(id='{self._id}')"
+
+    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
+        data = {}
+        should_include = functools.partial(
+            _should_include, include=include, exclude=exclude)
+
+        # Clip can be represented by just a GIF.
+        if should_include('image/gif'):
+            gif_contents = self._as_gif()
+            if gif_contents:
+                data['image/gif'] = gif_contents
+
+        if should_include('text/html'):
+            image_html = self._as_gif_html()
+            data['text/html'] = (
+                f'<table><tr><td>id</td><td>{self._id}</td></tr>'
+                f'<tr><td>preview</td><td>{image_html}</td></tr>'
+                '</table>'
+            )
+
+        return data
 
 
 class Pikov(object):
