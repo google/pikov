@@ -83,6 +83,24 @@ class Image:
             self._contents = row[0]
             return self._contents
 
+    def _as_html(self):
+        return (
+            '<table>'
+            '<tr><th>Image</th><th></th></tr>'
+            f'<tr><td>key</td><td>{self.key}</td></tr>'
+            f'<tr><td>content_type</td><td>{self.content_type}</td></tr>'
+            f'<tr><td>contents</td><td>{self._as_img()}</td></tr>'
+            '</table>'
+        )
+
+    def _as_img(self):
+        contents_base64 = base64.b64encode(self.contents).decode('utf-8')
+        return (
+            f'<img alt="image with key {self.key}" '
+            f'src="data:{self.content_type};base64,{contents_base64}" '
+            f'style="width: 5em; {PIXEL_ART_CSS}">'
+        )
+
     def __repr__(self):
         return f"Image(key='{self._key}')"
 
@@ -95,23 +113,9 @@ class Image:
             data[self.content_type] = self.contents
 
         if should_include('text/html'):
-            data['text/html'] = (
-                f'<table><tr><td>key</td><td>{self.key}</td></tr>'
-                f'<tr><td>content_type</td><td>{self.content_type}</td></tr>'
-                '<tr><td>contents</td>'
-                f'<td>{self._html_contents()}</td></tr>'
-                '</table>'
-            )
+            data['text/html'] = self._as_html()
 
         return data
-
-    def _html_contents(self):
-        contents_base64 = base64.b64encode(self.contents).decode('utf-8')
-        return (
-            f'<img alt="image with key {self.key}" '
-            f'src="data:{self.content_type};base64,{contents_base64}" '
-            f'style="width: 5em; {PIXEL_ART_CSS}">'
-        )
 
 
 class Frame(object):
@@ -162,6 +166,21 @@ class Frame(object):
             duration_microseconds = row[0]
             return datetime.timedelta(microseconds=duration_microseconds)
 
+    def _as_html(self):
+        image_html = None
+        if self.image is not None:
+            image_html = self.image._as_html()
+
+        return (
+            '<table>'
+            f'<tr><th>Frame</th><th></th></tr>'
+            f'<tr><td>id</td><td>{self._id}</td></tr>'
+            '<tr><td>duration</td>'
+            f'<td>{self.duration.total_seconds()} seconds</td></tr>'
+            f'<tr><td>image</td><td>{image_html}</td></tr>'
+            '</table>'
+        )
+
     def __repr__(self):
         return f"Frame(id='{self._id}')"
 
@@ -177,17 +196,7 @@ class Frame(object):
             data[self.image.content_type] = self.image.contents
 
         if should_include('text/html'):
-            image_html = None
-            if self.image is not None:
-                image_html = self.image._repr_mimebundle_(
-                    include='text/html')['text/html']
-            data['text/html'] = (
-                f'<table><tr><td>id</td><td>{self._id}</td></tr>'
-                '<tr><td>duration</td>'
-                f'<td>{self.duration.total_seconds()} seconds</td></tr>'
-                f'<tr><td>image</td><td>{image_html}</td></tr>'
-                '</table>'
-            )
+            data['text/html'] = self._as_html()
 
         return data
 
@@ -295,7 +304,7 @@ class Clip(object):
             output, format='gif', save_all=True, append_images=imgs, loop=0)
         return output.getvalue()
 
-    def _as_gif_html(self):
+    def _as_img(self):
         gif_contents = self._as_gif()
         if not gif_contents:
             return None
@@ -305,6 +314,15 @@ class Clip(object):
             f'<img alt="clip with ID {self._id}" '
             f'src="data:image/gif;base64,{contents_base64}" '
             f'style="width: 5em; {PIXEL_ART_CSS}">'
+        )
+
+    def _as_html(self):
+        return (
+            '<table>'
+            '<tr><th>Clip</th><th></th></tr>'
+            f'<tr><td>id</td><td>{self._id}</td></tr>'
+            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            '</table>'
         )
 
     def __repr__(self):
@@ -322,12 +340,7 @@ class Clip(object):
                 data['image/gif'] = gif_contents
 
         if should_include('text/html'):
-            image_html = self._as_gif_html()
-            data['text/html'] = (
-                f'<table><tr><td>id</td><td>{self._id}</td></tr>'
-                f'<tr><td>preview</td><td>{image_html}</td></tr>'
-                '</table>'
-            )
+            data['text/html'] = self._as_html()
 
         return data
 
