@@ -51,6 +51,21 @@ def clip_id(pkv):
     return clip.id
 
 
+@pytest.fixture
+def clip_with_frames(pkv, image_key):
+    clip = pkv.add_clip()
+    clip.append_frame(image_key)
+    two_tenths_second = datetime.timedelta(microseconds=200000)
+    clip.append_frame(image_key, duration=two_tenths_second)
+    return clip
+
+
+@pytest.fixture
+def frame(pkv, clip_id, image_key):
+    clip = pkv.get_clip(clip_id)
+    return clip.append_frame(image_key)
+
+
 def test_get_clip_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_clip(999)
@@ -76,6 +91,42 @@ def test_get_clip_with_frames(pkv, clip_id, image_key):
     assert clip.frames[0].id[1] == 0
     assert clip.frames[1].id[1] == 1
     assert clip.frames[1].duration == two_tenths_second
+
+
+def test_add_frames(pkv, frame):
+    multi_clip = frame + frame
+    assert len(multi_clip.frames) == 2
+
+
+def test_add_clip_with_frame(pkv, clip_with_frames, frame):
+    multi_clip = clip_with_frames + frame
+    assert len(multi_clip.frames) == len(clip_with_frames.frames) + 1
+
+    multi_clip = frame + clip_with_frames
+    assert len(multi_clip.frames) == len(clip_with_frames.frames) + 1
+
+    multi_clip_added = multi_clip + frame
+    assert len(multi_clip_added.frames) == len(multi_clip.frames) + 1
+
+    multi_clip_added = frame + multi_clip
+    assert len(multi_clip_added.frames) == len(multi_clip.frames) + 1
+
+
+def test_add_clips(pkv, clip_with_frames):
+    multi_clip = clip_with_frames + clip_with_frames
+    assert len(multi_clip.frames) == 2 * len(clip_with_frames.frames)
+
+    multi_added = multi_clip + clip_with_frames
+    expected_multi_added_len = (
+        len(multi_clip.frames) + len(clip_with_frames.frames)
+    )
+    assert len(multi_added.frames) == expected_multi_added_len
+
+    multi_added = clip_with_frames + multi_clip
+    assert len(multi_added.frames) == expected_multi_added_len
+
+    double_multi = multi_clip + multi_clip
+    assert len(double_multi.frames) == 2 * len(multi_clip.frames)
 
 
 def test_get_image_notfound(pkv):

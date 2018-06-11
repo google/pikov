@@ -118,7 +118,7 @@ class Image:
         return data
 
 
-class Frame(object):
+class Frame:
     """An animation frame.
 
     Args:
@@ -166,10 +166,20 @@ class Frame(object):
             duration_microseconds = row[0]
             return datetime.timedelta(microseconds=duration_microseconds)
 
+    def __add__(self, other):
+        if hasattr(other, 'frames'):
+            return MultiClip((self,) + other.frames)
+        elif isinstance(other, Frame):
+            return MultiClip((self, other))
+        else:
+            raise TypeError(f'Cannot add Frame and {str(type(other))}')
+
     def _as_html(self):
+        image_key = None
         image_html = None
         if self.image is not None:
-            image_html = self.image._as_html()
+            image_key = self.image.key
+            image_html = self.image._as_img()
 
         return (
             '<table>'
@@ -177,7 +187,8 @@ class Frame(object):
             f'<tr><td>id</td><td>{self._id}</td></tr>'
             '<tr><td>duration</td>'
             f'<td>{self.duration.total_seconds()} seconds</td></tr>'
-            f'<tr><td>image</td><td>{image_html}</td></tr>'
+            f'<tr><td>image.key</td><td>{image_key}</td></tr>'
+            f'<tr><td>image.contents</td><td>{image_html}</td></tr>'
             '</table>'
         )
 
@@ -201,7 +212,59 @@ class Frame(object):
         return data
 
 
-class Clip(object):
+class BaseClip:
+    """An animation clip, which is a collection of frames."""
+
+    @property
+    def frames(self) -> typing.Tuple[Frame, ...]:
+        """Collection[Frame]: A collection of frames in this clip."""
+        raise NotImplementedError()
+
+    def __add__(self, other):
+        if hasattr(other, 'frames'):
+            return MultiClip(self.frames + other.frames)
+        elif isinstance(other, Frame):
+            return MultiClip(self.frames + (other,))
+        else:
+            raise TypeError(f'Cannot add BaseClip and {str(type(other))}')
+
+    def _as_gif(self):
+        """Write a sequence of frames to a GIF (requires Pillow).
+
+        Returns:
+            Optional[bytes]:
+                Contents of a GIF rendering of the clip or ``None`` if the clip
+                contains no image frames.
+        """
+        if not self.frames:
+            return None
+
+        imgs = []
+        for frame in self.frames:
+            img_file = io.BytesIO(frame.image.contents)
+            img = PIL.Image.open(img_file)
+            img.duration = frame.duration.total_seconds() * 1000
+            imgs.append(img)
+
+        output = io.BytesIO()
+        imgs[0].save(
+            output, format='gif', save_all=True, append_images=imgs[1:], loop=0)
+        return output.getvalue()
+
+    def _as_img(self):
+        gif_contents = self._as_gif()
+        if not gif_contents:
+            return None
+
+        contents_base64 = base64.b64encode(gif_contents).decode('utf-8')
+        return (
+            f'<img alt="clip preview" '
+            f'src="data:image/gif;base64,{contents_base64}" '
+            f'style="width: 5em; {PIXEL_ART_CSS}">'
+        )
+
+
+class Clip(BaseClip):
     """An animation clip.
 
     Args:
@@ -280,48 +343,12 @@ class Clip(object):
 
         return Frame(self._connection, (self._id, clip_order))
 
-    def _as_gif(self):
-        """Write clip to a GIF (requires Pillow).
-
-        Returns:
-            Optional[bytes]:
-                Contents of a GIF filrendering of the clip or ``None`` if the
-                clip contains no image frames.
-        """
-
-        frames = self.frames
-        if not frames:
-            return None
-
-        first_img = PIL.Image.open(io.BytesIO(frames[0].image.contents))
-        imgs = []
-        for frame in frames[1:]:
-            in_file = io.BytesIO(frame.image.contents)
-            imgs.append(PIL.Image.open(in_file))
-
-        output = io.BytesIO()
-        first_img.save(
-            output, format='gif', save_all=True, append_images=imgs, loop=0)
-        return output.getvalue()
-
-    def _as_img(self):
-        gif_contents = self._as_gif()
-        if not gif_contents:
-            return None
-
-        contents_base64 = base64.b64encode(gif_contents).decode('utf-8')
-        return (
-            f'<img alt="clip with ID {self._id}" '
-            f'src="data:image/gif;base64,{contents_base64}" '
-            f'style="width: 5em; {PIXEL_ART_CSS}">'
-        )
-
     def _as_html(self):
         return (
             '<table>'
-            '<tr><th>Clip</th><th></th></tr>'
+            f'<tr><th>Clip</th><th></th></tr>'
             f'<tr><td>id</td><td>{self._id}</td></tr>'
-            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            f'<tr><td>frames</td><td>{self._as_img()}</td></tr>'
             '</table>'
         )
 
@@ -345,7 +372,45 @@ class Clip(object):
         return data
 
 
-class Pikov(object):
+class MultiClip(BaseClip):
+    """A sequence of clips."""
+
+    def __init__(self, frames):
+        self._frames = tuple(frames)
+
+    @property
+    def frames(self):
+        return self._frames
+
+    def _as_html(self):
+        return (
+            '<table>'
+            f'<tr><th>MultiClip</th><th></th></tr>'
+            f'<tr><td>frames</td><td>{self._as_img()}</td></tr>'
+            '</table>'
+        )
+
+    def __repr__(self):
+        return f"MultiClip(frames={repr(self._frames)}')"
+
+    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
+        data = {}
+        should_include = functools.partial(
+            _should_include, include=include, exclude=exclude)
+
+        # Clip can be represented by just a GIF.
+        if should_include('image/gif'):
+            gif_contents = self._as_gif()
+            if gif_contents:
+                data['image/gif'] = gif_contents
+
+        if should_include('text/html'):
+            data['text/html'] = self._as_html()
+
+        return data
+
+
+class Pikov:
     def __init__(self, connection):
         self._connection = connection
 
