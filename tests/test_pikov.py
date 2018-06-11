@@ -20,6 +20,28 @@ import pytest
 from pikov import pikov
 
 
+def load_image(x=0, y=0):
+    import PIL.Image
+
+    spritesheet_path = os.path.join(
+        os.path.dirname(__file__), '..', 'examples', 'gamekitty',
+        'gamekitty.png')
+    sheet = PIL.Image.open(spritesheet_path)
+
+    # Grab an 8x8 image of the spritesheet.
+    return sheet.crop(box=(x, y, x + 8, y + 8,))
+
+
+def create_clip(pkv, pil_images):
+    clip = pkv.add_clip()
+    for index, image in enumerate(pil_images):
+        key, _ = pkv.add_image(image)
+        clip.append_frame(
+            key,
+            duration=datetime.timedelta(microseconds=(index * 10000) + 10000))
+    return clip
+
+
 @pytest.fixture
 def pkv():
     """Create an emptyp Pikov file."""
@@ -28,15 +50,7 @@ def pkv():
 
 @pytest.fixture
 def pil_image():
-    import PIL.Image
-
-    spritesheet_path = os.path.join(
-        os.path.dirname(__file__), '..', 'examples', 'gamekitty',
-        'gamekitty.png')
-    sheet = PIL.Image.open(spritesheet_path)
-
-    # Grab just the first image of the spritesheet.
-    return sheet.crop(box=(0, 0, 8, 8,))
+    return load_image(0, 0)
 
 
 @pytest.fixture
@@ -52,12 +66,29 @@ def clip_id(pkv):
 
 
 @pytest.fixture
-def clip_with_frames(pkv, image_key):
-    clip = pkv.add_clip()
-    clip.append_frame(image_key)
-    two_tenths_second = datetime.timedelta(microseconds=200000)
-    clip.append_frame(image_key, duration=two_tenths_second)
-    return clip
+def clip_with_frames(pkv):
+    return create_clip(
+        pkv,
+        (
+            load_image(0, 0),
+            load_image(8, 0),
+            load_image(16, 0),
+            load_image(24, 0),
+            load_image(32, 0),
+        ))
+
+
+@pytest.fixture
+def clip_2(pkv):
+    return create_clip(
+        pkv,
+        (
+            load_image(40, 0),
+            load_image(48, 0),
+            load_image(56, 0),
+            load_image(64, 0),
+            load_image(72, 0),
+        ))
 
 
 @pytest.fixture
@@ -88,6 +119,7 @@ def test_get_clip_with_frames(pkv, clip_id, image_key):
     assert all([frame.id[0] == clip_id for frame in clip.frames])
     assert all([frame.image.key == image_key for frame in clip.frames])
     assert all([frame.image.contents is not None for frame in clip.frames])
+    # Check clip_order
     assert clip.frames[0].id[1] == 0
     assert clip.frames[1].id[1] == 1
     assert clip.frames[1].duration == two_tenths_second
@@ -140,3 +172,56 @@ def test_get_image_found(pkv, pil_image):
     assert img.key == key
     assert img.contents is not None
     assert len(img.contents) > 0
+
+
+def test_frame_next_found(pkv, clip_with_frames):
+    frames = clip_with_frames.frames
+    assert len(frames) > 1
+    frame = frames[0]
+    assert frame.next is not None
+    assert frame.next.id[0] == frame.id[0]
+    assert frame.next.id[1] == frame.id[1] + 1
+
+
+def test_frame_next_not_found(pkv, clip_with_frames):
+    frames = clip_with_frames.frames
+    assert len(frames) > 0
+    last_frame = frames[-1]
+    assert last_frame.next is None
+
+
+def test_frame_transitions_empty(pkv, clip_with_frames):
+    last_frame = clip_with_frames.frames[-1]
+    assert last_frame is not None
+    assert last_frame.transitions == ()
+
+
+def test_frame_transition_to(pkv, clip_with_frames, clip_2):
+    source_frame = clip_with_frames.frames[-1]
+    assert source_frame is not None
+    target_frame = clip_2.frames[0]
+    assert target_frame is not None
+
+    source_frame.transition_to(target_frame)
+
+    transitions = source_frame.transitions
+    assert len(transitions) == 1
+    assert transitions[0].source == source_frame
+    assert transitions[0].target == target_frame
+
+
+def test_frame_transitions(pkv, clip_with_frames, clip_2):
+    source_frame = clip_with_frames.frames[-1]
+    target1 = clip_2.frames[0]
+    target2 = clip_2.frames[1]
+    source_frame.transition_to(target2)
+    source_frame.transition_to(target1)
+
+    transitions = source_frame.transitions
+
+    assert len(transitions) == 2
+    assert all(
+        (transition.source == source_frame for transition in transitions))
+    # Transitions should be sorted by target clip_order.
+    assert transitions[0].target == target1
+    assert transitions[1].target == target2

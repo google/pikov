@@ -140,6 +140,10 @@ class Frame:
         return self._id
 
     @property
+    def clip(self) -> 'Clip':
+        return Clip(self._connection, self._id[0])
+
+    @property
     def image(self) -> Image:
         """image (Image): Image content on the frame."""
         with self._connection:
@@ -167,6 +171,50 @@ class Frame:
             duration_microseconds = row[0]
             return datetime.timedelta(microseconds=duration_microseconds)
 
+    @property
+    def next(self) -> typing.Optional['Frame']:
+        next_id = (self._id[0], self._id[1] + 1)
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT clip_id, clip_order '
+                'FROM frame '
+                'WHERE clip_id = ? '
+                'AND clip_order = ?;',
+                next_id)
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return Frame(self._connection, next_id)
+
+    @property
+    def transitions(self) -> typing.Tuple['Transition', ...]:
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT id '
+                'FROM transition '
+                'WHERE source_clip_id = ? '
+                'AND source_clip_order = ?'
+                'ORDER BY target_clip_id ASC, target_clip_order ASC;',
+                self._id)
+            return tuple((
+                Transition(self._connection, row[0])
+                for row in cursor.fetchall()
+            ))
+
+    def transition_to(self, target: 'Frame') -> 'Transition':
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'INSERT INTO transition '
+                '(source_clip_id, source_clip_order,'
+                ' target_clip_id, target_clip_order) '
+                'VALUES (?, ?, ?, ?);',
+                self.id + target.id)
+            return Transition(self._connection, cursor.lastrowid)
+
     def __add__(self, other):
         if hasattr(other, 'frames'):
             return MultiClip((self,) + other.frames)
@@ -192,6 +240,9 @@ class Frame:
             f'<tr><td>image.contents</td><td>{image_html}</td></tr>'
             '</table>'
         )
+
+    def __eq__(self, other):
+        return isinstance(other, Frame) and self.id == other.id
 
     def __repr__(self):
         return f"Frame(id='{self._id}')"
@@ -412,6 +463,50 @@ class MultiClip(BaseClip):
         return data
 
 
+class Transition:
+    def __init__(self, connection: sqlite3.Connection, id: int):
+        self._connection = connection
+        self._id = id
+        # Source and Target are immutable for a Transition,
+        # so we can cache the objects for them.
+        self._source = None
+        self._target = None
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    @property
+    def source(self) -> Frame:
+        if self._source is not None:
+            return self._source
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT source_clip_id, source_clip_order '
+                'FROM transition WHERE id = ?;',
+                (self._id,))
+            row = cursor.fetchone()
+            self._source = Frame(self._connection, row)
+            return self._source
+
+    @property
+    def target(self) -> Frame:
+        if self._target is not None:
+            return self._target
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT target_clip_id, target_clip_order '
+                'FROM transition WHERE id = ?;',
+                (self._id,))
+            row = cursor.fetchone()
+            self._target = Frame(self._connection, row)
+            return self._target
+
+
 class Pikov:
     def __init__(self, connection):
         self._connection = connection
@@ -447,6 +542,17 @@ class Pikov:
         cursor.execute(
             'CREATE TABLE clip ('
             'id INTEGER PRIMARY KEY)')
+        cursor.execute(
+            'CREATE TABLE transition ('
+            'id INTEGER PRIMARY KEY, '
+            'source_clip_id INTEGER, '
+            'source_clip_order INTEGER, '
+            'target_clip_id INTEGER, '
+            'target_clip_order INTEGER, '
+            'FOREIGN KEY(source_clip_id, source_clip_order) '
+            '  REFERENCES frame(clip_id, clip_order), '
+            'FOREIGN KEY(target_clip_id, target_clip_order) '
+            '  REFERENCES frame(clip_id, clip_order));')
         pikov._connection.commit()
         return pikov
 
