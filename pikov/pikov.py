@@ -249,7 +249,8 @@ class BaseClip:
 
         output = io.BytesIO()
         imgs[0].save(
-            output, format='gif', save_all=True, append_images=imgs[1:], loop=0)
+            output, format='gif', save_all=True, append_images=imgs[1:],
+            loop=0)
         return output.getvalue()
 
     def _as_img(self):
