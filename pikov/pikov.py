@@ -22,6 +22,7 @@ import sqlite3
 import typing
 
 import PIL.Image
+import PIL.ImageOps
 
 
 PIXEL_ART_CSS = (
@@ -566,7 +567,8 @@ def hash_image(image):
 
 
 def import_clip(
-        pikov_path, sprite_sheet_path, frame_width, frame_height, fps, frames):
+        pikov_path, sprite_sheet_path, frame_width, frame_height, fps, frames,
+        flip_x=False):
     duration = datetime.timedelta(seconds=1) / fps
 
     # Read the Pikov file.
@@ -589,6 +591,8 @@ def import_clip(
             col * frame_width, row * frame_height,
             (col + 1) * frame_width, (row + 1) * frame_height,))
 
+        if flip_x:
+            frame = PIL.ImageOps.mirror(frame)
         image_key, image_added = pikov.add_image(frame)
         if image_added:
             added += 1
@@ -597,14 +601,14 @@ def import_clip(
         images[spritesheet_frame] = image_key
 
     # Create clip
-    clip_id = pikov.add_clip()
-    for clip_order, spritesheet_frame in enumerate(frames):
+    clip = pikov.add_clip()
+    for spritesheet_frame in frames:
         image_key = images[spritesheet_frame]
-        pikov.add_frame(clip_id, clip_order, image_key, duration)
+        clip.append_frame(image_key, duration)
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
-    print('Created clip {} with {} frames.'.format(clip_id, len(frames)))
+    print('Created clip {} with {} frames.'.format(clip.id, len(frames)))
 
 
 def create(pikov_path):
@@ -624,6 +628,8 @@ def main():
         help='Import a sprite sheet animation as a clip.')
     import_clip_parser.add_argument(
         '--fps', help='Frames per second.', type=int, default=12)
+    import_clip_parser.add_argument(
+        '--flip_x', help='Flip frames horizontally.', type=bool, default=False)
     import_clip_parser.add_argument('pikov_path', help='Path to .pikov file.')
     import_clip_parser.add_argument(
         'sprite_sheet_path', help='Path to sprite sheet.')
@@ -644,7 +650,7 @@ def main():
         frames = list(map(int, args.frames.split(',')))
         import_clip(
             args.pikov_path, args.sprite_sheet_path, frame_width,
-            frame_height, args.fps, frames)
+            frame_height, args.fps, frames, flip_x=args.flip_x)
     elif args.action is not None:
         raise NotImplementedError(
             'Got unknown action: {}'.format(args.action))
