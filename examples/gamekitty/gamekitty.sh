@@ -29,6 +29,7 @@ pikov import-clip examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitt
 pikov import-clip examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 52,48,49
 pikov import-clip examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 53,54,55
 pikov import-clip examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 84,85,87,88,89,90,91,92,93,95,96,97
+pikov import-clip examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 40
 pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 0
 pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 1,2,3,4
 pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 34,35
@@ -43,3 +44,4 @@ pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/game
 pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 52,48,49
 pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 53,54,55
 pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 84,85,87,88,89,90,91,92,93,95,96,97
+pikov import-clip --flip_x=True examples/gamekitty/gamekitty.pikov examples/gamekitty/gamekitty.png 8x8 40

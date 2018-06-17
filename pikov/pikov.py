@@ -280,7 +280,7 @@ class BaseClip:
         else:
             raise TypeError(f'Cannot add BaseClip and {str(type(other))}')
 
-    def _as_gif(self):
+    def _as_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
 
         Returns:
@@ -436,10 +436,12 @@ class MultiClip(BaseClip):
         return self._frames
 
     def _as_html(self):
+        frames_repr ='<br>'.join((repr(frame) for frame in self._frames))
         return (
             '<table>'
             f'<tr><th>MultiClip</th><th></th></tr>'
-            f'<tr><td>frames</td><td>{self._as_img()}</td></tr>'
+            f'<tr><td>frames</td><td>{frames_repr}</td></tr>'
+            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
             '</table>'
         )
 
@@ -505,6 +507,68 @@ class Transition:
             row = cursor.fetchone()
             self._target = Frame(self._connection, row)
             return self._target
+
+    def _as_clip(self) -> MultiClip:
+        current_frame = self.source.clip.frames[0]
+
+        # Add all frames up to the current frame from the source clip.
+        frames = []
+        while current_frame != self.source:
+            frames.append(current_frame)
+            current_frame = current_frame.next
+
+        frames.append(self.source)
+        current_frame = self.target
+
+        # Add all frames until the end of the target clip.
+        while current_frame != None:
+            frames.append(current_frame)
+            current_frame = current_frame.next
+
+        return MultiClip(frames)
+
+    def _as_gif(self) -> typing.Optional[bytes]:
+        return self._as_clip()._as_gif()
+
+    def _as_img(self) -> str:
+        return self._as_clip()._as_img()
+
+    def _as_html(self) -> str:
+        return (
+            '<table>'
+            '<tr><th>Transition</th><th></th></tr>'
+            f'<tr><td>id</td><td>{self.id}</td></tr>'
+            f'<tr><td>source.id</td><td>{self.source.id}</td></tr>'
+            f'<tr><td>source.image</td><td>{self.source.image._as_img()}</td></tr>'
+            f'<tr><td>target.id</td><td>{self.target.id}</td></tr>'
+            f'<tr><td>target.image</td><td>{self.target.image._as_img()}</td></tr>'
+            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            '</table>'
+        )
+
+    def __repr__(self) -> str:
+        return (
+            'Transition('
+            f'id={repr(self.id)}, '
+            f'source={repr(self.source)}, '
+            f'target{repr(self.target)})'
+        )
+
+    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
+        data = {}
+        should_include = functools.partial(
+            _should_include, include=include, exclude=exclude)
+
+        # Clip can be represented by just a GIF.
+        if should_include('image/gif'):
+            gif_contents = self._as_gif()
+            if gif_contents:
+                data['image/gif'] = gif_contents
+
+        if should_include('text/html'):
+            data['text/html'] = self._as_html()
+
+        return data
 
 
 class Pikov:
