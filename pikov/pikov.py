@@ -351,6 +351,22 @@ class Clip(BaseClip):
                 for row in cursor.fetchall()
             ))
 
+    @property
+    def transitions(self) -> typing.Tuple['Transition', ...]:
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT id '
+                'FROM transition '
+                'WHERE source_clip_id = ? '
+                'ORDER BY source_clip_order,'
+                ' target_clip_id ASC, target_clip_order ASC;',
+                (self._id,))
+            return tuple((
+                Transition(self._connection, row[0])
+                for row in cursor.fetchall()
+            ))
+
     def append_frame(
             self,
             image_key: str,
@@ -436,7 +452,7 @@ class MultiClip(BaseClip):
         return self._frames
 
     def _as_html(self):
-        frames_repr ='<br>'.join((repr(frame) for frame in self._frames))
+        frames_repr = '<br>'.join((repr(frame) for frame in self._frames))
         return (
             '<table>'
             f'<tr><th>MultiClip</th><th></th></tr>'
@@ -521,7 +537,7 @@ class Transition:
         current_frame = self.target
 
         # Add all frames until the end of the target clip.
-        while current_frame != None:
+        while current_frame is not None:
             frames.append(current_frame)
             current_frame = current_frame.next
 
@@ -534,14 +550,16 @@ class Transition:
         return self._as_clip()._as_img()
 
     def _as_html(self) -> str:
+        source_img = self.source.image._as_img()
+        target_img = self.target.image._as_img()
         return (
             '<table>'
             '<tr><th>Transition</th><th></th></tr>'
             f'<tr><td>id</td><td>{self.id}</td></tr>'
             f'<tr><td>source.id</td><td>{self.source.id}</td></tr>'
-            f'<tr><td>source.image</td><td>{self.source.image._as_img()}</td></tr>'
+            f'<tr><td>source.image</td><td>{source_img}</td></tr>'
             f'<tr><td>target.id</td><td>{self.target.id}</td></tr>'
-            f'<tr><td>target.image</td><td>{self.target.image._as_img()}</td></tr>'
+            f'<tr><td>target.image</td><td>{target_img}</td></tr>'
             f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
             '</table>'
         )

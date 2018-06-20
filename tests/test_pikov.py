@@ -225,3 +225,28 @@ def test_frame_transitions(pkv, clip_with_frames, clip_2):
     # Transitions should be sorted by target clip_order.
     assert transitions[0].target == target1
     assert transitions[1].target == target2
+
+
+def test_clip_transitions(pkv, clip_with_frames, clip_2):
+    source1 = clip_with_frames.frames[0]
+    source2 = clip_with_frames.frames[-1]
+    target1 = clip_2.frames[0]
+    target2 = clip_2.frames[1]
+    source2.transition_to(target2)
+    source2.transition_to(target1)
+    source1.transition_to(target2)
+    source1.transition_to(target1)
+
+    transitions = clip_with_frames.transitions
+
+    assert len(transitions) == 4
+    # Transitions should be sorted by source clip_order,
+    # then by target clip_order.
+    assert transitions[0].source == source1
+    assert transitions[0].target == target1
+    assert transitions[1].source == source1
+    assert transitions[1].target == target2
+    assert transitions[2].source == source2
+    assert transitions[2].target == target1
+    assert transitions[3].source == source2
+    assert transitions[3].target == target2
