@@ -485,6 +485,7 @@ class Transition:
     def __init__(self, connection: sqlite3.Connection, id: int):
         self._connection = connection
         self._id = id
+        self._deleted = False
         # Source and Target are immutable for a Transition,
         # so we can cache the objects for them.
         self._source = None
@@ -496,6 +497,9 @@ class Transition:
 
     @property
     def source(self) -> Frame:
+        if self._deleted:
+            raise ValueError('Cannot fetch source on deleted transition.')
+
         if self._source is not None:
             return self._source
 
@@ -511,6 +515,9 @@ class Transition:
 
     @property
     def target(self) -> Frame:
+        if self._deleted:
+            raise ValueError('Cannot fetch target on deleted transition.')
+
         if self._target is not None:
             return self._target
 
@@ -523,6 +530,17 @@ class Transition:
             row = cursor.fetchone()
             self._target = Frame(self._connection, row)
             return self._target
+
+    def delete(self):
+        if self._deleted:
+            raise ValueError('Cannot delete. Transition already deleted.')
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'DELETE FROM transition WHERE id = ?;',
+                (self._id,))
+            self._deleted = True
 
     def _as_clip(self) -> MultiClip:
         current_frame = self.source.clip.frames[0]

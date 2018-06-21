@@ -97,6 +97,13 @@ def frame(pkv, clip_id, image_key):
     return clip.append_frame(image_key)
 
 
+@pytest.fixture
+def transition(clip_with_frames, clip_2):
+    source_frame = clip_with_frames.frames[-1]
+    target_frame = clip_2.frames[0]
+    return source_frame.transition_to(target_frame)
+
+
 def test_get_clip_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_clip(999)
@@ -250,3 +257,28 @@ def test_clip_transitions(pkv, clip_with_frames, clip_2):
     assert transitions[2].target == target1
     assert transitions[3].source == source2
     assert transitions[3].target == target2
+
+
+def test_transition_delete_does_delete(transition):
+    transition_id = transition.id
+    source = transition.source
+    before_len = len(source.transitions)
+    assert before_len > 0
+
+    transition.delete()
+
+    assert transition.id == transition_id
+    assert len(source.transitions) == before_len - 1
+
+
+def test_transition_operations_raise_on_deleted(transition):
+    transition.delete()
+
+    with pytest.raises(ValueError):
+        _ = transition.target
+
+    with pytest.raises(ValueError):
+        _ = transition.source
+
+    with pytest.raises(ValueError):
+        transition.delete()
