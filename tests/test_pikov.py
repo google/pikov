@@ -275,10 +275,10 @@ def test_transition_operations_raise_on_deleted(transition):
     transition.delete()
 
     with pytest.raises(ValueError):
-        _ = transition.target
+        transition.target
 
     with pytest.raises(ValueError):
-        _ = transition.source
+        transition.source
 
     with pytest.raises(ValueError):
         transition.delete()
