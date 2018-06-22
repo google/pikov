@@ -209,12 +209,10 @@ def test_frame_transition_to(pkv, clip_with_frames, clip_2):
     target_frame = clip_2.frames[0]
     assert target_frame is not None
 
-    source_frame.transition_to(target_frame)
+    transition = source_frame.transition_to(target_frame)
 
-    transitions = source_frame.transitions
-    assert len(transitions) == 1
-    assert transitions[0].source == source_frame
-    assert transitions[0].target == target_frame
+    assert transition.source == source_frame
+    assert transition.target == target_frame
 
 
 def test_frame_transitions(pkv, clip_with_frames, clip_2):
@@ -232,6 +230,15 @@ def test_frame_transitions(pkv, clip_with_frames, clip_2):
     # Transitions should be sorted by target clip_order.
     assert transitions[0].target == target1
     assert transitions[1].target == target2
+
+
+def test_clip_transitions_to(pkv, clip_with_frames, clip_2):
+    transition = clip_with_frames.transition_to(clip_2)
+
+    source_frame = clip_with_frames.frames[-1]
+    assert transition.source == source_frame
+    target_frame = clip_2.frames[0]
+    assert transition.target == target_frame
 
 
 def test_clip_transitions(pkv, clip_with_frames, clip_2):

@@ -412,6 +412,19 @@ class Clip(BaseClip):
 
         return Frame(self._connection, (self._id, clip_order))
 
+    def transition_to(self, target: 'Clip') -> 'Transition':
+        """Add a transition from this clip to the beginning of a target clip.
+
+        Arguments:
+            target (Clip): Destination clip for a transition.
+
+        Returns:
+            Transition:
+                A transition from the last frame of this clip to the first
+                frame of the ``target`` clip.
+        """
+        return self.frames[-1].transition_to(target.frames[0])
+
     def _as_html(self):
         return (
             '<table>'
