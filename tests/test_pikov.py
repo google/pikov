@@ -104,6 +104,24 @@ def transition(clip_with_frames, clip_2):
     return source_frame.transition_to(target_frame)
 
 
+def test_find_absorbing_frames(pkv, clip_with_frames, clip_2):
+    # Two independent clips.
+    frame1 = clip_with_frames.frames[-1]
+    frame2 = clip_2.frames[-1]
+    found = pkv.find_absorbing_frames()
+    expected = tuple(sorted((frame1, frame2), key=lambda frame: frame.id))
+    assert found == expected
+
+    # Connecting one to the other drops an absorbing frame.
+    frame1.transition_to(frame2)
+    found = pkv.find_absorbing_frames()
+    assert found == (frame2,)
+
+
+def test_find_absorbing_frames_empty(pkv):
+    assert pkv.find_absorbing_frames() == ()
+
+
 def test_get_clip_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_clip(999)

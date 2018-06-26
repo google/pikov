@@ -173,18 +173,16 @@ class Frame:
 
     @property
     def next(self) -> typing.Optional['Frame']:
-        next_id = (self._id[0], self._id[1] + 1)
-
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'SELECT clip_id, clip_order '
+                'SELECT clip_id, MIN(clip_order) '
                 'FROM frame '
                 'WHERE clip_id = ? '
-                'AND clip_order = ?;',
-                next_id)
-            row = cursor.fetchone()
-            if row is None:
+                'AND clip_order > ?;',
+                self._id)
+            next_id = cursor.fetchone()
+            if next_id is None or next_id[1] is None:
                 return None
             return Frame(self._connection, next_id)
 
@@ -755,6 +753,39 @@ class Pikov:
                     'Could not find clip with clip_id "{}"'.format(clip_id))
 
         return Clip(self._connection, clip_id)
+
+    def find_absorbing_frames(self) -> typing.Tuple[Frame, ...]:
+        """Return all frames which are 'absorbing'.
+
+        An absorbing frame is one with no connections outgoing connections to
+        any other frame except itself. Once an animation reaches such a
+        frame, it will be stuck there until reset.
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                # Select the final frame in each clip.
+                'SELECT f1.clip_id, f1.clip_order '
+                'FROM frame AS f1 '
+                'LEFT OUTER JOIN frame AS f2'
+                ' ON f1.clip_id = f2.clip_id'
+                ' AND f1.clip_order < f2.clip_order '
+                # Join with transitions to find frames with no
+                # transitions out.
+                'LEFT OUTER JOIN transition'
+                ' ON f1.clip_id = transition.source_clip_id'
+                ' AND f1.clip_order = transition.source_clip_order'
+                ' AND (f1.clip_id != transition.target_clip_id'
+                ' OR f1.clip_order != transition.target_clip_order) '
+                'WHERE f2.clip_order IS NULL'  # No next frame.
+                # No transitions out.
+                ' AND transition.source_clip_order IS NULL '
+                'ORDER BY f1.clip_id, f1.clip_order ASC;')
+            frame_ids = cursor.fetchall()
+            return tuple((
+                Frame(self._connection, frame_id)
+                for frame_id in frame_ids
+            ))
 
 
 def _should_include(mime, include=None, exclude=None):
