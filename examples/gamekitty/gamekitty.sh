@@ -33,6 +33,7 @@ clips=(
     84,85,87,88,89,90,91,92,93,95,96,97
     62,63,64,65,66
     40
+    69,70,71,72,73,74,75,76,77
 )
 rm examples/gamekitty/gamekitty.pikov ; pikov create examples/gamekitty/gamekitty.pikov
 
