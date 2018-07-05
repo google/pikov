@@ -15,9 +15,11 @@
 import argparse
 import base64
 import datetime
+import functools
 import hashlib
 import io
-import functools
+import json
+import os.path
 import sqlite3
 import typing
 
@@ -202,6 +204,43 @@ class Frame:
                 for row in cursor.fetchall()
             ))
 
+    def _get_properties(self, cursor) -> typing.Mapping[str, typing.Any]:
+        cursor.execute(
+            'SELECT properties '
+            'FROM frame '
+            'WHERE clip_id = ? '
+            'AND clip_order = ?',
+            self._id)
+        row = cursor.fetchone()
+        if not row[0]:
+            return {}
+        return json.loads(row[0])
+
+    def get_property(self, key: str) -> typing.Any:
+        with self._connection:
+            cursor = self._connection.cursor()
+            properties = self._get_properties(cursor)
+            return properties.get(key)
+
+    def set_property(self, key: str, value: typing.Any):
+        with self._connection:
+            cursor = self._connection.cursor()
+            try:
+                cursor.execute('BEGIN')
+                properties = self._get_properties(cursor)
+                properties[key] = value
+                properties_json = json.dumps(properties)
+                cursor.execute(
+                    'UPDATE frame '
+                    'SET properties = ? '
+                    'WHERE clip_id = ? '
+                    'AND clip_order = ?',
+                    (properties_json,) + self._id)
+                cursor.execute('COMMIT')
+            except Exception:
+                cursor.execute('ROLLBACK')
+                raise
+
     def transition_to(self, target: 'Frame') -> 'Transition':
         with self._connection:
             cursor = self._connection.cursor()
@@ -228,6 +267,9 @@ class Frame:
             image_key = self.image.key
             image_html = self.image._as_img()
 
+        with self._connection:
+            properties = self._get_properties(self._connection.cursor())
+
         return (
             '<table>'
             f'<tr><th>Frame</th><th></th></tr>'
@@ -236,6 +278,8 @@ class Frame:
             f'<td>{self.duration.total_seconds()} seconds</td></tr>'
             f'<tr><td>image.key</td><td>{image_key}</td></tr>'
             f'<tr><td>image.contents</td><td>{image_html}</td></tr>'
+            '<tr><td>properties</td><td style="text-align: left;">'
+            f'<pre>{json.dumps(properties, indent=2)}</pre></td></tr>'
             '</table>'
         )
 
@@ -647,6 +691,7 @@ class Pikov:
             'clip_order INTEGER, '
             'image_key TEXT, '
             'duration_microseconds INTEGER, '
+            'properties TEXT, '
             'FOREIGN KEY(clip_id) REFERENCES clip(id), '
             'FOREIGN KEY(image_key) REFERENCES image(key), '
             'PRIMARY KEY (clip_id, clip_order));')
@@ -818,15 +863,23 @@ def hash_image(image):
 
 
 def import_clip(
-        pikov_path, sprite_sheet_path, frame_width, frame_height, fps, frames,
+        pikov_path, spritesheet_path, frame_width, frame_height, fps, frames,
         flip_x=False):
+    # Normalize the paths for file relative path comparison.
+    pikov_path = os.path.abspath(pikov_path)
+    pikov_dir = os.path.dirname(pikov_path)
+    spritesheet_path = os.path.abspath(spritesheet_path)
+    relative_spritesheet_path = os.path.relpath(
+        spritesheet_path, start=pikov_dir)
+
+    # Convert FPS input into a per-frame duration.
     duration = datetime.timedelta(seconds=1) / fps
 
     # Read the Pikov file.
     pikov = Pikov.open(pikov_path)
 
     # Chop the sprite sheet into frames.
-    sheet = PIL.Image.open(sprite_sheet_path)
+    sheet = PIL.Image.open(spritesheet_path)
     sheet_width, _ = sheet.size
     cols = sheet_width // frame_width
 
@@ -838,9 +891,9 @@ def import_clip(
     for spritesheet_frame in frames_set:
         row = spritesheet_frame // cols
         col = spritesheet_frame % cols
-        frame = sheet.crop(box=(
-            col * frame_width, row * frame_height,
-            (col + 1) * frame_width, (row + 1) * frame_height,))
+        x = col * frame_width
+        y = row * frame_height
+        frame = sheet.crop(box=(x, y, x + frame_width, y + frame_height,))
 
         if flip_x:
             frame = PIL.ImageOps.mirror(frame)
@@ -849,13 +902,23 @@ def import_clip(
             added += 1
         else:
             duplicates += 1
-        images[spritesheet_frame] = image_key
+        images[spritesheet_frame] = (
+            image_key,
+            {
+                'path': relative_spritesheet_path,
+                'x': x,
+                'y': y,
+                'width': frame_width,
+                'height': frame_height,
+                'flipX': flip_x,
+            })
 
     # Create clip
     clip = pikov.add_clip()
     for spritesheet_frame in frames:
-        image_key = images[spritesheet_frame]
-        clip.append_frame(image_key, duration)
+        image_key, original_image = images[spritesheet_frame]
+        frame = clip.append_frame(image_key, duration)
+        frame.set_property('originalImage', original_image)
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
@@ -883,7 +946,7 @@ def main():
         '--flip_x', help='Flip frames horizontally.', type=bool, default=False)
     import_clip_parser.add_argument('pikov_path', help='Path to .pikov file.')
     import_clip_parser.add_argument(
-        'sprite_sheet_path', help='Path to sprite sheet.')
+        'spritesheet_path', help='Path to sprite sheet.')
     import_clip_parser.add_argument(
         'frame_size', help='Size of frame. WIDTHxHEIGHT. Example: 8x8')
     import_clip_parser.add_argument(
@@ -900,7 +963,7 @@ def main():
         frame_width, frame_height = map(int, args.frame_size.split('x'))
         frames = list(map(int, args.frames.split(',')))
         import_clip(
-            args.pikov_path, args.sprite_sheet_path, frame_width,
+            args.pikov_path, args.spritesheet_path, frame_width,
             frame_height, args.fps, frames, flip_x=args.flip_x)
     elif args.action is not None:
         raise NotImplementedError(
