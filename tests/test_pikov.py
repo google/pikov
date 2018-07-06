@@ -14,6 +14,7 @@
 
 import datetime
 import os.path
+import uuid
 
 import pytest
 
@@ -33,7 +34,7 @@ def load_image(x=0, y=0):
 
 
 def create_clip(pkv, pil_images):
-    clip = pkv.add_clip()
+    clip = pkv.add_clip(str(uuid.uuid4()))
     for index, image in enumerate(pil_images):
         key, _ = pkv.add_image(image)
         clip.append_frame(
@@ -61,7 +62,8 @@ def image_key(pkv, pil_image):
 
 @pytest.fixture
 def clip_id(pkv):
-    clip = pkv.add_clip()
+    clip_id = str(uuid.uuid4())
+    clip = pkv.add_clip(clip_id)
     return clip.id
 
 

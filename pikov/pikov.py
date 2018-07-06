@@ -686,8 +686,11 @@ class Pikov:
             'contents BLOB, '
             'content_type STRING)')
         cursor.execute(
+            'CREATE TABLE clip ('
+            'id STRING PRIMARY KEY)')
+        cursor.execute(
             'CREATE TABLE frame ('
-            'clip_id INTEGER, '
+            'clip_id STRING, '
             'clip_order INTEGER, '
             'image_key TEXT, '
             'duration_microseconds INTEGER, '
@@ -696,14 +699,11 @@ class Pikov:
             'FOREIGN KEY(image_key) REFERENCES image(key), '
             'PRIMARY KEY (clip_id, clip_order));')
         cursor.execute(
-            'CREATE TABLE clip ('
-            'id INTEGER PRIMARY KEY)')
-        cursor.execute(
             'CREATE TABLE transition ('
             'id INTEGER PRIMARY KEY, '
-            'source_clip_id INTEGER, '
+            'source_clip_id STRING, '
             'source_clip_order INTEGER, '
-            'target_clip_id INTEGER, '
+            'target_clip_id STRING, '
             'target_clip_order INTEGER, '
             'FOREIGN KEY(source_clip_id, source_clip_order) '
             '  REFERENCES frame(clip_id, clip_order), '
@@ -764,7 +764,7 @@ class Pikov:
 
         return Image(self._connection, key)
 
-    def add_clip(self):
+    def add_clip(self, clip_id):
         """Add an animation clip to the Pikov file.
 
         Returns:
@@ -772,14 +772,14 @@ class Pikov:
         """
         with self._connection:
             cursor = self._connection.cursor()
-            cursor.execute('INSERT INTO clip DEFAULT VALUES')
-            return Clip(self._connection, cursor.lastrowid)
+            cursor.execute('INSERT INTO clip (id) VALUES (?)', (clip_id,))
+            return Clip(self._connection, clip_id)
 
     def get_clip(self, clip_id):
         """Get the animation clip with a specific ID.
 
         Args:
-            clip_id (int): Identifier of the animation clip to load.
+            clip_id (str): Identifier of the animation clip to load.
 
         Returns:
             Clip: A clip containing all the clip's frames.
@@ -863,8 +863,8 @@ def hash_image(image):
 
 
 def import_clip(
-        pikov_path, spritesheet_path, frame_width, frame_height, fps, frames,
-        flip_x=False):
+        pikov_path, clip_id, spritesheet_path, frame_width, frame_height,
+        fps, frames, flip_x=False):
     # Normalize the paths for file relative path comparison.
     pikov_path = os.path.abspath(pikov_path)
     pikov_dir = os.path.dirname(pikov_path)
@@ -914,7 +914,7 @@ def import_clip(
             })
 
     # Create clip
-    clip = pikov.add_clip()
+    clip = pikov.add_clip(clip_id)
     for spritesheet_frame in frames:
         image_key, original_image = images[spritesheet_frame]
         frame = clip.append_frame(image_key, duration)
@@ -946,6 +946,8 @@ def main():
         '--flip_x', help='Flip frames horizontally.', type=bool, default=False)
     import_clip_parser.add_argument('pikov_path', help='Path to .pikov file.')
     import_clip_parser.add_argument(
+        'clip_id', help='Unique identifier for the new clip.')
+    import_clip_parser.add_argument(
         'spritesheet_path', help='Path to sprite sheet.')
     import_clip_parser.add_argument(
         'frame_size', help='Size of frame. WIDTHxHEIGHT. Example: 8x8')
@@ -963,8 +965,8 @@ def main():
         frame_width, frame_height = map(int, args.frame_size.split('x'))
         frames = list(map(int, args.frames.split(',')))
         import_clip(
-            args.pikov_path, args.spritesheet_path, frame_width,
-            frame_height, args.fps, frames, flip_x=args.flip_x)
+            args.pikov_path, args.clip_id, args.spritesheet_path,
+            frame_width, frame_height, args.fps, frames, flip_x=args.flip_x)
     elif args.action is not None:
         raise NotImplementedError(
             'Got unknown action: {}'.format(args.action))
