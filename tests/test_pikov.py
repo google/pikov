@@ -14,6 +14,7 @@
 
 import datetime
 import os.path
+import io
 import uuid
 
 import pytest
@@ -179,6 +180,7 @@ def test_get_clip_with_frames(pkv, clip_id, image_key):
     assert clip.frames[1].duration == two_tenths_second
 
 
+# MultiClip
 def test_add_frames(pkv, frame):
     multi_clip = frame + frame
     assert len(multi_clip.frames) == 2
@@ -215,6 +217,7 @@ def test_add_clips(pkv, clip_with_frames):
     assert len(double_multi.frames) == 2 * len(multi_clip.frames)
 
 
+# Pikov
 def test_get_image_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_image('md5-1234567890')
@@ -336,3 +339,40 @@ def test_transition_operations_raise_on_deleted(transition):
 
     with pytest.raises(ValueError):
         transition.delete()
+
+
+def test_pikov_save_gif_missing_start_clip(pkv):
+    fp = io.BytesIO()
+    with pytest.raises(ValueError):
+        pkv.save_gif(fp)
+
+
+def test_pikov_save_gif_missing_start_clip_frames(pkv):
+    fp = io.BytesIO()
+    pkv.add_clip('first_clip')
+
+    with pytest.raises(ValueError) as excinfo:
+        pkv.save_gif(fp)
+
+    assert 'first_clip' in str(excinfo.value)
+
+
+def test__preview_clip_respects_duration(pkv, clip_with_frames):
+    # Transition clip to self so that loops are possible.
+    clip_with_frames.transition_to(clip_with_frames)
+    min_duration = datetime.timedelta(seconds=2)
+    max_duration = datetime.timedelta(seconds=3)
+    preview = pkv._preview_clip(
+        start_clip=clip_with_frames,
+        min_duration=min_duration,
+        max_duration=max_duration)
+
+    # Any frames at all?
+    assert len(preview.frames) > 0
+
+    total_duration = datetime.timedelta(seconds=0)
+    for frame in preview.frames:
+        total_duration = total_duration + frame.duration
+
+    assert min_duration <= total_duration
+    assert total_duration <= max_duration

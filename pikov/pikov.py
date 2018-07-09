@@ -20,6 +20,7 @@ import hashlib
 import io
 import json
 import os.path
+import random
 import sqlite3
 import typing
 
@@ -204,6 +205,26 @@ class Frame:
                 for row in cursor.fetchall()
             ))
 
+    def get_random_next(self) -> 'Frame':
+        """Transition randomly to a next frame.
+
+        The next frame will either be the next in the clip that contains this
+        frame or one of the target frames from the transitions. If no such
+        frame exists, this method returns this frame.
+        """
+        target_frames = list(
+            (transition.target for transition in self.transitions))
+
+        next_in_clip = self.next
+        if next_in_clip is not None:
+            target_frames.append(next_in_clip)
+
+        # No frames to transition to? Return this frame.
+        if not target_frames:
+            return self
+
+        return target_frames[random.randrange(len(target_frames))]
+
     def _get_properties(self, cursor) -> typing.Mapping[str, typing.Any]:
         cursor.execute(
             'SELECT properties '
@@ -314,6 +335,22 @@ class BaseClip:
         """Collection[Frame]: A collection of frames in this clip."""
         raise NotImplementedError()
 
+    def save_gif(self, fp):
+        """Save this clip as a GIF to file pointer ``fp``."""
+        if not self.frames:
+            raise NotFound('No frames to write to GIF.')
+
+        imgs = []
+        durations = []
+        for frame in self.frames:
+            img_file = io.BytesIO(frame.image.contents)
+            imgs.append(PIL.Image.open(img_file))
+            durations.append(frame.duration.total_seconds() * 1000)
+
+        imgs[0].save(
+            fp, format='gif', save_all=True, append_images=imgs[1:],
+            duration=durations, loop=0)
+
     def __add__(self, other):
         if hasattr(other, 'frames'):
             return MultiClip(self.frames + other.frames)
@@ -333,17 +370,8 @@ class BaseClip:
         if not self.frames:
             return None
 
-        imgs = []
-        for frame in self.frames:
-            img_file = io.BytesIO(frame.image.contents)
-            img = PIL.Image.open(img_file)
-            img.duration = frame.duration.total_seconds() * 1000
-            imgs.append(img)
-
         output = io.BytesIO()
-        imgs[0].save(
-            output, format='gif', save_all=True, append_images=imgs[1:],
-            loop=0)
+        self.save_gif(output)
         return output.getvalue()
 
     def _as_img(self):
@@ -878,6 +906,125 @@ class Pikov:
                 Frame(self._connection, frame_id)
                 for frame_id in frame_ids
             ))
+
+    def _preview_clip(
+            self,
+            start_clip: Clip,
+            min_duration: datetime.timedelta,
+            max_duration: datetime.timedelta):
+        start_frames = start_clip.frames
+        if not start_frames:
+            raise ValueError(
+                'start_clip "{}" contains no frames.'.format(start_clip.id))
+
+        first_frame = start_frames[0]
+        current_frame = None
+        preview_frames = []
+        total_duration = datetime.timedelta(seconds=0)
+        next_frame = first_frame
+
+        # Haven't gotten long enough or haven't looped yet.
+        while total_duration < min_duration or next_frame != first_frame:
+            current_frame = next_frame
+            preview_frames.append(current_frame)
+            total_duration = total_duration + current_frame.duration
+            next_frame = current_frame.get_random_next()
+
+            # Have reached the maximum animation length?
+            if total_duration + next_frame.duration > max_duration:
+                break
+
+        return MultiClip(frames=preview_frames)
+
+    def save_gif(
+            self,
+            fp: typing.BinaryIO,
+            start_clip: typing.Optional[Clip]=None,
+            min_duration: datetime.timedelta=datetime.timedelta(seconds=10),
+            max_duration: datetime.timedelta=datetime.timedelta(seconds=30)):
+        """Save a preview GIF to file pointer ``fp``.
+
+        Arguments:
+            fp (BinaryIO): File-like object to write GIF to.
+            start_clip (Optional[Clip]):
+                Clip to start the animation at. Defaults to
+                :attr:`Pikov.start_clip`.
+            min_duration (Optional[datetime.timedelta]):
+                The minimum duration of the GIF animation (inclusive).
+                Defaults to 10 seconds.
+            max_duration (Optional[datetime.timedelta]):
+                The maximum duration of the GIF animation (inclusive).
+                Defaults to 30 seconds. Once the animation exceeds
+                ``min_duration`` in length, it ends once it creates a looping
+                animation or reaches ``max_duration`` in length.
+
+        Raises:
+            ValueError:
+                If could not get a ``start_clip`` or if ``start_clip`` has no
+                frames.
+        """
+        if start_clip is None:
+            start_clip = self.start_clip
+        if start_clip is None:
+            raise ValueError('missing start_clip.')
+
+        preview_clip = self._preview_clip(
+            start_clip=start_clip,
+            min_duration=min_duration,
+            max_duration=max_duration)
+        preview_clip.save_gif(fp)
+
+    def _as_gif(self) -> typing.Optional[bytes]:
+        """Write a sequence of frames to a GIF (requires Pillow).
+
+        Returns:
+            Optional[bytes]:
+                Contents of a GIF rendering of the clip or ``None`` if
+                start_clip contains no frames.
+        """
+        start_clip = self.start_clip
+        if start_clip is None or not start_clip.frames:
+            return None
+
+        output = io.BytesIO()
+        self.save_gif(output, start_clip=start_clip)
+        return output.getvalue()
+
+    def _as_img(self):
+        gif_contents = self._as_gif()
+        if not gif_contents:
+            return None
+
+        contents_base64 = base64.b64encode(gif_contents).decode('utf-8')
+        return (
+            f'<img alt="clip preview" '
+            f'src="data:image/gif;base64,{contents_base64}" '
+            f'style="width: 5em; {PIXEL_ART_CSS}">'
+        )
+
+    def _as_html(self):
+        return (
+            '<table>'
+            f'<tr><th>Pikov</th><th></th></tr>'
+            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            '</table>'
+        )
+
+    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
+        data = {}
+        should_include = functools.partial(
+            _should_include, include=include, exclude=exclude)
+
+        # Clip can be represented by just a GIF.
+        if should_include('image/gif'):
+            gif_contents = self._as_gif()
+            if gif_contents:
+                data['image/gif'] = gif_contents
+
+        if should_include('text/html'):
+            data['text/html'] = self._as_html()
+
+        return data
 
 
 def _should_include(mime, include=None, exclude=None):
