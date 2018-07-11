@@ -476,6 +476,9 @@ class Clip(BaseClip):
             '</table>'
         )
 
+    def __eq__(self, other):
+        return isinstance(other, Clip) and self.id == other.id
+
     def __repr__(self):
         return f"Clip(id='{self._id}')"
 
@@ -684,10 +687,15 @@ class Pikov:
             'CREATE TABLE image ('
             'key TEXT PRIMARY KEY, '
             'contents BLOB, '
-            'content_type STRING)')
+            'content_type STRING);')
         cursor.execute(
             'CREATE TABLE clip ('
-            'id STRING PRIMARY KEY)')
+            'id STRING PRIMARY KEY);')
+        cursor.execute(
+            'CREATE TABLE pikov ('
+            'id STRING PRIMARY KEY, '
+            'start_clip_id STRING, '
+            'FOREIGN KEY(start_clip_id) REFERENCES clip(id));')
         cursor.execute(
             'CREATE TABLE frame ('
             'clip_id STRING, '
@@ -709,8 +717,42 @@ class Pikov:
             '  REFERENCES frame(clip_id, clip_order), '
             'FOREIGN KEY(target_clip_id, target_clip_order) '
             '  REFERENCES frame(clip_id, clip_order));')
+        cursor.execute('INSERT INTO pikov (id) VALUES (1);')
         pikov._connection.commit()
         return pikov
+
+    @property
+    def start_clip(self) -> typing.Optional[Clip]:
+        """Optional[Clip]: The starting animation clip.
+
+        Returns:
+            Optional[Clip]: The starting clip, if one is set.
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute('SELECT start_clip_id FROM pikov WHERE id = 1')
+            clip_row = cursor.fetchone()
+
+            if not clip_row:
+                return None
+
+            clip_id = clip_row[0]
+            if clip_id is None:
+                return None
+
+        return Clip(self._connection, clip_id)
+
+    @start_clip.setter
+    def start_clip(self, clip: typing.Optional[Clip]):
+        clip_id = None
+        if clip is not None:
+            clip_id = clip.id
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'UPDATE pikov SET start_clip_id = ? WHERE id = 1',
+                (clip_id,))
 
     def add_image(self, image):
         """Add an image to the Pikov file.
@@ -773,6 +815,11 @@ class Pikov:
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute('INSERT INTO clip (id) VALUES (?)', (clip_id,))
+            # Set to the start clip if one hasn't been set yet.
+            cursor.execute(
+                'UPDATE pikov SET start_clip_id = ? '
+                'WHERE id = 1 AND start_clip_id IS NULL',
+                (clip_id,))
             return Clip(self._connection, clip_id)
 
     def get_clip(self, clip_id):

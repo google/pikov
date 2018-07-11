@@ -124,6 +124,33 @@ def test_find_absorbing_frames_empty(pkv):
     assert pkv.find_absorbing_frames() == ()
 
 
+def test_add_clip_sets_start_clip(pkv):
+    assert pkv.start_clip is None
+    first = pkv.add_clip('first_clip')
+    assert pkv.start_clip == first
+    pkv.add_clip('second_clip')
+    assert pkv.start_clip == first
+
+
+def test_set_start_clip_sets_clip(pkv):
+    assert pkv.start_clip is None
+    first = pkv.add_clip('first_clip')
+    second = pkv.add_clip('second_clip')
+    assert first != second
+    assert pkv.start_clip == first
+    pkv.start_clip = second
+    assert pkv.start_clip == second
+
+
+def test_set_start_clip_none_unsets_clip(pkv):
+    assert pkv.start_clip is None
+    first = pkv.add_clip('first_clip')
+    assert first is not None
+    assert pkv.start_clip == first
+    pkv.start_clip = None
+    assert pkv.start_clip is None
+
+
 def test_get_clip_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_clip(999)
