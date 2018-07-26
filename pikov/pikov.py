@@ -128,23 +128,15 @@ class Frame:
     Args:
         connection (sqlite3.Connection):
             A connection to the SQLite database this frame belongs to.
-        id (Tuple[int, int]):
-            The primary key of this frame.
+        id (int): The primary key of this frame.
     """
-    def __init__(
-            self,
-            connection: sqlite3.Connection,
-            id: typing.Tuple[int, int]):
+    def __init__(self, connection: sqlite3.Connection, id: int):
         self._connection = connection
         self._id = id
 
     @property
-    def id(self) -> typing.Tuple[int, int]:
+    def id(self) -> int:
         return self._id
-
-    @property
-    def clip(self) -> 'Clip':
-        return Clip(self._connection, self._id[0])
 
     @property
     def image(self) -> Image:
@@ -153,8 +145,8 @@ class Frame:
             cursor = self._connection.cursor()
             cursor.execute(
                 'SELECT image_key FROM frame '
-                'WHERE clip_id = ? AND clip_order = ?;',
-                self._id)
+                'WHERE id = ?;',
+                (self._id,))
             row = cursor.fetchone()
             image_key = row[0]
             return Image(self._connection, image_key)
@@ -168,26 +160,11 @@ class Frame:
             cursor = self._connection.cursor()
             cursor.execute(
                 'SELECT duration_microseconds FROM frame '
-                'WHERE clip_id = ? AND clip_order = ?;',
-                self._id)
+                'WHERE id = ?;',
+                (self._id,))
             row = cursor.fetchone()
             duration_microseconds = row[0]
             return datetime.timedelta(microseconds=duration_microseconds)
-
-    @property
-    def next(self) -> typing.Optional['Frame']:
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute(
-                'SELECT clip_id, MIN(clip_order) '
-                'FROM frame '
-                'WHERE clip_id = ? '
-                'AND clip_order > ?;',
-                self._id)
-            next_id = cursor.fetchone()
-            if next_id is None or next_id[1] is None:
-                return None
-            return Frame(self._connection, next_id)
 
     @property
     def transitions(self) -> typing.Tuple['Transition', ...]:
@@ -196,10 +173,9 @@ class Frame:
             cursor.execute(
                 'SELECT id '
                 'FROM transition '
-                'WHERE source_clip_id = ? '
-                'AND source_clip_order = ?'
-                'ORDER BY target_clip_id ASC, target_clip_order ASC;',
-                self._id)
+                'WHERE source_frame_id = ? '
+                'ORDER BY target_frame_id ASC;',
+                (self._id,))
             return tuple((
                 Transition(self._connection, row[0])
                 for row in cursor.fetchall()
@@ -208,16 +184,11 @@ class Frame:
     def get_random_next(self) -> 'Frame':
         """Transition randomly to a next frame.
 
-        The next frame will either be the next in the clip that contains this
-        frame or one of the target frames from the transitions. If no such
-        frame exists, this method returns this frame.
+        The next frame is one of the target frames from the transitions. If
+        no such frame exists, this method returns this frame.
         """
-        target_frames = list(
+        target_frames = tuple(
             (transition.target for transition in self.transitions))
-
-        next_in_clip = self.next
-        if next_in_clip is not None:
-            target_frames.append(next_in_clip)
 
         # No frames to transition to? Return this frame.
         if not target_frames:
@@ -229,9 +200,8 @@ class Frame:
         cursor.execute(
             'SELECT properties '
             'FROM frame '
-            'WHERE clip_id = ? '
-            'AND clip_order = ?',
-            self._id)
+            'WHERE id = ? ',
+            (self._id,))
         row = cursor.fetchone()
         if not row[0]:
             return {}
@@ -254,9 +224,8 @@ class Frame:
                 cursor.execute(
                     'UPDATE frame '
                     'SET properties = ? '
-                    'WHERE clip_id = ? '
-                    'AND clip_order = ?',
-                    (properties_json,) + self._id)
+                    'WHERE id = ?;',
+                    (properties_json, self._id,))
                 cursor.execute('COMMIT')
             except Exception:
                 cursor.execute('ROLLBACK')
@@ -267,17 +236,16 @@ class Frame:
             cursor = self._connection.cursor()
             cursor.execute(
                 'INSERT INTO transition '
-                '(source_clip_id, source_clip_order,'
-                ' target_clip_id, target_clip_order) '
-                'VALUES (?, ?, ?, ?);',
-                self.id + target.id)
+                '(source_frame_id, target_frame_id) '
+                'VALUES (?, ?);',
+                (self.id, target.id))
             return Transition(self._connection, cursor.lastrowid)
 
     def __add__(self, other):
         if hasattr(other, 'frames'):
-            return MultiClip((self,) + other.frames)
+            return Clip((self,) + other.frames)
         elif isinstance(other, Frame):
-            return MultiClip((self, other))
+            return Clip((self, other))
         else:
             raise TypeError(f'Cannot add Frame and {str(type(other))}')
 
@@ -327,13 +295,22 @@ class Frame:
         return data
 
 
-class BaseClip:
+class Clip:
     """An animation clip, which is a collection of frames."""
+
+    def __init__(self, frames, is_loop=False):
+        self._frames = tuple(frames)
+        self._is_loop = is_loop
 
     @property
     def frames(self) -> typing.Tuple[Frame, ...]:
-        """Collection[Frame]: A collection of frames in this clip."""
-        raise NotImplementedError()
+        """Tuple[Frame, ...]: A collection of frames in this clip."""
+        return self._frames
+
+    @property
+    def is_loop(self) -> bool:
+        """Does the clip loop on itself?"""
+        return self._is_loop
 
     def save_gif(self, fp):
         """Save this clip as a GIF to file pointer ``fp``."""
@@ -342,22 +319,71 @@ class BaseClip:
 
         imgs = []
         durations = []
+        previous_image = None
         for frame in self.frames:
+            duration = frame.duration.total_seconds() * 1000
+
+            # Increase the duration if the image is the same as the previous.
+            if previous_image == frame.image.key:
+                durations[-1] = durations[-1] + duration
+                continue
+
+            # New image, add it to the list.
+            previous_image = frame.image.key
             img_file = io.BytesIO(frame.image.contents)
             imgs.append(PIL.Image.open(img_file))
-            durations.append(frame.duration.total_seconds() * 1000)
+            durations.append(duration)
 
         imgs[0].save(
-            fp, format='gif', save_all=True, append_images=imgs[1:],
-            duration=durations, loop=0)
+            fp, format='gif', save_all=(len(imgs) > 1), append_images=imgs[1:],
+            duration=durations if len(durations) > 1 else durations[0],
+            # Always loop since this the GIF is used to preview the clip.
+            loop=0)
+
+    def add_missing_transitions(self) -> typing.Collection['Transition']:
+        """Add missing transitions between consecutive frames in the clip.
+
+        TODO: Only add missing transitions. Method currently adds all
+        transitions.
+
+        Returns:
+            Collection[Transition]: Any transitions that were added.
+        """
+        added_transitions = []
+
+        previous_frame = self.frames[0]
+        for frame in self.frames[1:]:
+            # TODO: Transition only if the transition isn't already present.
+            transition = previous_frame.transition_to(frame)
+            added_transitions.append(transition)
+            previous_frame = frame
+
+        if self.is_loop:  # TODO: And there isn't a transition already.
+            transition = self.frames[-1].transition_to(self.frames[0])
+            added_transitions.append(transition)
+
+        return added_transitions
+
+    def transition_to(self, target: 'Clip') -> 'Transition':
+        """Add a transition from this clip to the beginning of a target clip.
+
+        Arguments:
+            target (Clip): Destination clip for a transition.
+
+        Returns:
+            Transition:
+                A transition from the last frame of this clip to the first
+                frame of the ``target`` clip.
+        """
+        return self.frames[-1].transition_to(target.frames[0])
 
     def __add__(self, other):
         if hasattr(other, 'frames'):
-            return MultiClip(self.frames + other.frames)
+            return Clip(self.frames + other.frames)
         elif isinstance(other, Frame):
-            return MultiClip(self.frames + (other,))
+            return Clip(self.frames + (other,))
         else:
-            raise TypeError(f'Cannot add BaseClip and {str(type(other))}')
+            raise TypeError(f'Cannot add Clip and {str(type(other))}')
 
     def _as_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
@@ -386,169 +412,18 @@ class BaseClip:
             f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
-
-class Clip(BaseClip):
-    """An animation clip.
-
-    Args:
-        connection (sqlite3.Connection):
-            A connection to the SQLite database this frame belongs to.
-        id (int): The clip identifier.
-    """
-    def __init__(
-            self,
-            connection: sqlite3.Connection,
-            id: int):
-        self._connection = connection
-        self._id = id
-
-    @property
-    def id(self) -> int:
-        return self._id
-
-    @property
-    def frames(self) -> typing.Tuple[Frame, ...]:
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute(
-                'SELECT clip_order '
-                'FROM frame '
-                'WHERE clip_id = ? '
-                'ORDER BY clip_order ASC;',
-                (self._id,))
-            return tuple((
-                Frame(self._connection, (self._id, row[0]))
-                for row in cursor.fetchall()
-            ))
-
-    @property
-    def transitions(self) -> typing.Tuple['Transition', ...]:
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute(
-                'SELECT id '
-                'FROM transition '
-                'WHERE source_clip_id = ? '
-                'ORDER BY source_clip_order,'
-                ' target_clip_id ASC, target_clip_order ASC;',
-                (self._id,))
-            return tuple((
-                Transition(self._connection, row[0])
-                for row in cursor.fetchall()
-            ))
-
-    def append_frame(
-            self,
-            image_key: str,
-            duration: typing.Optional[datetime.timedelta]=None):
-        """Add a frame to the end of this clip.
-
-        Args:
-            image_key (str):
-                An image to use as a frame in a clip.
-            duration (datetime.timedelta, optional):
-                Duration to display the frame within a clip. Defaults to
-                100,000 microseconds (10 frames per second).
-
-        Returns:
-            Frame: The frame added.
-        """
-        if duration is None:
-            duration = datetime.timedelta(microseconds=100000)
-        duration_microseconds = int(duration.total_seconds() * 1000000)
-
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute("BEGIN")
-
-            # What should the next clip_order be?
-            cursor.execute(
-                'SELECT MAX(clip_order) '
-                'FROM frame '
-                'WHERE clip_id = ?;',
-                (self._id,))
-            row = cursor.fetchone()
-            previous_clip_order = row[0]
-            if previous_clip_order is None:
-                previous_clip_order = -1
-            clip_order = previous_clip_order + 1
-
-            # Add the new Frame.
-            cursor.execute(
-                'INSERT INTO frame '
-                '(clip_id, clip_order, image_key, duration_microseconds) '
-                'VALUES (?, ?, ?, ?)',
-                (self._id, clip_order, image_key, duration_microseconds))
-
-        return Frame(self._connection, (self._id, clip_order))
-
-    def transition_to(self, target: 'Clip') -> 'Transition':
-        """Add a transition from this clip to the beginning of a target clip.
-
-        Arguments:
-            target (Clip): Destination clip for a transition.
-
-        Returns:
-            Transition:
-                A transition from the last frame of this clip to the first
-                frame of the ``target`` clip.
-        """
-        return self.frames[-1].transition_to(target.frames[0])
-
     def _as_html(self):
+        frames_repr = ', '.join((repr(frame) for frame in self._frames))
         return (
             '<table>'
             f'<tr><th>Clip</th><th></th></tr>'
-            f'<tr><td>id</td><td>{self._id}</td></tr>'
-            f'<tr><td>frames</td><td>{self._as_img()}</td></tr>'
-            '</table>'
-        )
-
-    def __eq__(self, other):
-        return isinstance(other, Clip) and self.id == other.id
-
-    def __repr__(self):
-        return f"Clip(id='{self._id}')"
-
-    def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
-        data = {}
-        should_include = functools.partial(
-            _should_include, include=include, exclude=exclude)
-
-        # Clip can be represented by just a GIF.
-        if should_include('image/gif'):
-            gif_contents = self._as_gif()
-            if gif_contents:
-                data['image/gif'] = gif_contents
-
-        if should_include('text/html'):
-            data['text/html'] = self._as_html()
-
-        return data
-
-
-class MultiClip(BaseClip):
-    """A sequence of clips."""
-
-    def __init__(self, frames):
-        self._frames = tuple(frames)
-
-    @property
-    def frames(self):
-        return self._frames
-
-    def _as_html(self):
-        frames_repr = '<br>'.join((repr(frame) for frame in self._frames))
-        return (
-            '<table>'
-            f'<tr><th>MultiClip</th><th></th></tr>'
             f'<tr><td>frames</td><td>{frames_repr}</td></tr>'
             f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
             '</table>'
         )
 
     def __repr__(self):
-        return f"MultiClip(frames={repr(self._frames)}')"
+        return f"Clip(frames={repr(self._frames)}')"
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
@@ -592,11 +467,10 @@ class Transition:
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'SELECT source_clip_id, source_clip_order '
-                'FROM transition WHERE id = ?;',
+                'SELECT source_frame_id FROM transition WHERE id = ?;',
                 (self._id,))
             row = cursor.fetchone()
-            self._source = Frame(self._connection, row)
+            self._source = Frame(self._connection, row[0])
             return self._source
 
     @property
@@ -610,11 +484,10 @@ class Transition:
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'SELECT target_clip_id, target_clip_order '
-                'FROM transition WHERE id = ?;',
+                'SELECT target_frame_id FROM transition WHERE id = ?;',
                 (self._id,))
             row = cursor.fetchone()
-            self._target = Frame(self._connection, row)
+            self._target = Frame(self._connection, row[0])
             return self._target
 
     def delete(self):
@@ -628,24 +501,8 @@ class Transition:
                 (self._id,))
             self._deleted = True
 
-    def _as_clip(self) -> MultiClip:
-        current_frame = self.source.clip.frames[0]
-
-        # Add all frames up to the current frame from the source clip.
-        frames = []
-        while current_frame != self.source:
-            frames.append(current_frame)
-            current_frame = current_frame.next
-
-        frames.append(self.source)
-        current_frame = self.target
-
-        # Add all frames until the end of the target clip.
-        while current_frame is not None:
-            frames.append(current_frame)
-            current_frame = current_frame.next
-
-        return MultiClip(frames)
+    def _as_clip(self) -> Clip:
+        return Clip((self.source, self.target))
 
     def _as_gif(self) -> typing.Optional[bytes]:
         return self._as_clip()._as_gif()
@@ -715,72 +572,62 @@ class Pikov:
             'CREATE TABLE image ('
             'key TEXT PRIMARY KEY, '
             'contents BLOB, '
-            'content_type STRING);')
-        cursor.execute(
-            'CREATE TABLE clip ('
-            'id STRING PRIMARY KEY);')
-        cursor.execute(
-            'CREATE TABLE pikov ('
-            'id STRING PRIMARY KEY, '
-            'start_clip_id STRING, '
-            'FOREIGN KEY(start_clip_id) REFERENCES clip(id));')
+            'content_type TEXT);')
         cursor.execute(
             'CREATE TABLE frame ('
-            'clip_id STRING, '
-            'clip_order INTEGER, '
+            'id INTEGER PRIMARY KEY, '
             'image_key TEXT, '
             'duration_microseconds INTEGER, '
             'properties TEXT, '
-            'FOREIGN KEY(clip_id) REFERENCES clip(id), '
-            'FOREIGN KEY(image_key) REFERENCES image(key), '
-            'PRIMARY KEY (clip_id, clip_order));')
+            'FOREIGN KEY(image_key) REFERENCES image(key));')
+        cursor.execute(
+            'CREATE TABLE pikov ('
+            'id STRING PRIMARY KEY, '
+            'start_frame_id INTEGER, '
+            'FOREIGN KEY(start_frame_id) REFERENCES frame(id));')
         cursor.execute(
             'CREATE TABLE transition ('
             'id INTEGER PRIMARY KEY, '
-            'source_clip_id STRING, '
-            'source_clip_order INTEGER, '
-            'target_clip_id STRING, '
-            'target_clip_order INTEGER, '
-            'FOREIGN KEY(source_clip_id, source_clip_order) '
-            '  REFERENCES frame(clip_id, clip_order), '
-            'FOREIGN KEY(target_clip_id, target_clip_order) '
-            '  REFERENCES frame(clip_id, clip_order));')
+            'source_frame_id INTEGER, '
+            'target_frame_id INTEGER, '
+            'FOREIGN KEY(source_frame_id) REFERENCES frame(id), '
+            'FOREIGN KEY(target_frame_id) REFERENCES frame(id));')
         cursor.execute('INSERT INTO pikov (id) VALUES (1);')
         pikov._connection.commit()
         return pikov
 
     @property
-    def start_clip(self) -> typing.Optional[Clip]:
-        """Optional[Clip]: The starting animation clip.
+    def start_frame(self) -> typing.Optional[Frame]:
+        """Optional[Frame]: The starting animation frame.
 
         Returns:
-            Optional[Clip]: The starting clip, if one is set.
+            Optional[Frame]: The starting frame, if one is set.
         """
         with self._connection:
             cursor = self._connection.cursor()
-            cursor.execute('SELECT start_clip_id FROM pikov WHERE id = 1')
-            clip_row = cursor.fetchone()
+            cursor.execute('SELECT start_frame_id FROM pikov WHERE id = 1')
+            row = cursor.fetchone()
 
-            if not clip_row:
+            if not row:
                 return None
 
-            clip_id = clip_row[0]
-            if clip_id is None:
+            frame_id = row[0]
+            if frame_id is None:
                 return None
 
-        return Clip(self._connection, clip_id)
+        return Frame(self._connection, frame_id)
 
-    @start_clip.setter
-    def start_clip(self, clip: typing.Optional[Clip]):
-        clip_id = None
-        if clip is not None:
-            clip_id = clip.id
+    @start_frame.setter
+    def start_frame(self, frame: typing.Optional[Frame]):
+        frame_id = None
+        if frame is not None:
+            frame_id = frame.id
 
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'UPDATE pikov SET start_clip_id = ? WHERE id = 1',
-                (clip_id,))
+                'UPDATE pikov SET start_frame_id = ? WHERE id = 1',
+                (frame_id,))
 
     def add_image(self, image):
         """Add an image to the Pikov file.
@@ -834,45 +681,60 @@ class Pikov:
 
         return Image(self._connection, key)
 
-    def add_clip(self, clip_id):
-        """Add an animation clip to the Pikov file.
-
-        Returns:
-            Clip: The clip added.
-        """
-        with self._connection:
-            cursor = self._connection.cursor()
-            cursor.execute('INSERT INTO clip (id) VALUES (?)', (clip_id,))
-            # Set to the start clip if one hasn't been set yet.
-            cursor.execute(
-                'UPDATE pikov SET start_clip_id = ? '
-                'WHERE id = 1 AND start_clip_id IS NULL',
-                (clip_id,))
-            return Clip(self._connection, clip_id)
-
-    def get_clip(self, clip_id):
-        """Get the animation clip with a specific ID.
+    def add_frame(self, image_key, duration=None):
+        """Add an animation frame to the Pikov file.
 
         Args:
-            clip_id (str): Identifier of the animation clip to load.
+            image_key (str):
+                An image to use as a frame in a clip.
+            duration (datetime.timedelta, optional):
+                Duration to display the frame within a clip. Defaults to
+                100,000 microseconds (10 frames per second).
 
         Returns:
-            Clip: A clip containing all the clip's frames.
+            Frame: The frame added.
+        """
+        if duration is None:
+            duration = datetime.timedelta(microseconds=100000)
+        duration_microseconds = int(duration.total_seconds() * 1000000)
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'INSERT INTO frame (image_key, duration_microseconds) '
+                'VALUES (?, ?)',
+                (image_key, duration_microseconds))
+            frame_id = cursor.lastrowid
+            # Set to the start clip if one hasn't been set yet.
+            cursor.execute(
+                'UPDATE pikov SET start_frame_id = ? '
+                'WHERE id = 1 AND start_frame_id IS NULL',
+                (frame_id,))
+            return Frame(self._connection, frame_id)
+
+    def get_frame(self, frame_id):
+        """Get the animation frame with a specific ID.
+
+        Args:
+            frame_id (int): Identifier of the animation frame to load.
+
+        Returns:
+            Frame: A frame, if found.
 
         Raises:
-            NotFound: If clip with ``clip_id`` is not found.
+            NotFound: If frame with ``frame_id`` is not found.
         """
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'SELECT id FROM clip WHERE id = ?', (clip_id,))
-            clip_row = cursor.fetchone()
+                'SELECT id FROM frame WHERE id = ?', (frame_id,))
+            row = cursor.fetchone()
 
-            if not clip_row:
+            if not row:
                 raise NotFound(
-                    'Could not find clip with clip_id "{}"'.format(clip_id))
+                    'Could not find frame with frame_id "{}"'.format(frame_id))
 
-        return Clip(self._connection, clip_id)
+        return Frame(self._connection, frame_id)
 
     def find_absorbing_frames(self) -> typing.Tuple[Frame, ...]:
         """Return all frames which are 'absorbing'.
@@ -884,47 +746,33 @@ class Pikov:
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                # Select the final frame in each clip.
-                'SELECT f1.clip_id, f1.clip_order '
-                'FROM frame AS f1 '
-                'LEFT OUTER JOIN frame AS f2'
-                ' ON f1.clip_id = f2.clip_id'
-                ' AND f1.clip_order < f2.clip_order '
+                'SELECT frame.id AS frame_id FROM frame '
                 # Join with transitions to find frames with no
                 # transitions out.
                 'LEFT OUTER JOIN transition'
-                ' ON f1.clip_id = transition.source_clip_id'
-                ' AND f1.clip_order = transition.source_clip_order'
-                ' AND (f1.clip_id != transition.target_clip_id'
-                ' OR f1.clip_order != transition.target_clip_order) '
-                'WHERE f2.clip_order IS NULL'  # No next frame.
+                ' ON frame.id = transition.source_frame_id'
+                ' AND frame.id != transition.target_frame_id '
                 # No transitions out.
-                ' AND transition.source_clip_order IS NULL '
-                'ORDER BY f1.clip_id, f1.clip_order ASC;')
+                'WHERE transition.source_frame_id IS NULL '
+                'ORDER BY frame_id ASC;')
             frame_ids = cursor.fetchall()
             return tuple((
-                Frame(self._connection, frame_id)
+                Frame(self._connection, frame_id[0])
                 for frame_id in frame_ids
             ))
 
     def _preview_clip(
             self,
-            start_clip: Clip,
-            min_duration: datetime.timedelta,
-            max_duration: datetime.timedelta):
-        start_frames = start_clip.frames
-        if not start_frames:
-            raise ValueError(
-                'start_clip "{}" contains no frames.'.format(start_clip.id))
-
-        first_frame = start_frames[0]
+            start_frame: Frame,
+            min_duration: datetime.timedelta=datetime.timedelta(seconds=10),
+            max_duration: datetime.timedelta=datetime.timedelta(seconds=30)):
         current_frame = None
         preview_frames = []
         total_duration = datetime.timedelta(seconds=0)
-        next_frame = first_frame
+        next_frame = start_frame
 
         # Haven't gotten long enough or haven't looped yet.
-        while total_duration < min_duration or next_frame != first_frame:
+        while total_duration < min_duration or next_frame != start_frame:
             current_frame = next_frame
             preview_frames.append(current_frame)
             total_duration = total_duration + current_frame.duration
@@ -934,21 +782,21 @@ class Pikov:
             if total_duration + next_frame.duration > max_duration:
                 break
 
-        return MultiClip(frames=preview_frames)
+        return Clip(frames=preview_frames)
 
     def save_gif(
             self,
             fp: typing.BinaryIO,
-            start_clip: typing.Optional[Clip]=None,
+            start_frame: typing.Optional[Frame]=None,
             min_duration: datetime.timedelta=datetime.timedelta(seconds=10),
             max_duration: datetime.timedelta=datetime.timedelta(seconds=30)):
         """Save a preview GIF to file pointer ``fp``.
 
         Arguments:
             fp (BinaryIO): File-like object to write GIF to.
-            start_clip (Optional[Clip]):
-                Clip to start the animation at. Defaults to
-                :attr:`Pikov.start_clip`.
+            start_frame (Optional[Frame]):
+                Frame to start the animation at. Defaults to
+                :attr:`Pikov.start_frame`.
             min_duration (Optional[datetime.timedelta]):
                 The minimum duration of the GIF animation (inclusive).
                 Defaults to 10 seconds.
@@ -959,17 +807,15 @@ class Pikov:
                 animation or reaches ``max_duration`` in length.
 
         Raises:
-            ValueError:
-                If could not get a ``start_clip`` or if ``start_clip`` has no
-                frames.
+            ValueError: If could not get a ``start_frame``.
         """
-        if start_clip is None:
-            start_clip = self.start_clip
-        if start_clip is None:
-            raise ValueError('missing start_clip.')
+        if start_frame is None:
+            start_frame = self.start_frame
+        if start_frame is None:
+            raise ValueError('missing start_frame.')
 
         preview_clip = self._preview_clip(
-            start_clip=start_clip,
+            start_frame=start_frame,
             min_duration=min_duration,
             max_duration=max_duration)
         preview_clip.save_gif(fp)
@@ -980,14 +826,14 @@ class Pikov:
         Returns:
             Optional[bytes]:
                 Contents of a GIF rendering of the clip or ``None`` if
-                start_clip contains no frames.
+                there is no start frame.
         """
-        start_clip = self.start_clip
-        if start_clip is None or not start_clip.frames:
+        start_frame = self.start_frame
+        if start_frame is None:
             return None
 
         output = io.BytesIO()
-        self.save_gif(output, start_clip=start_clip)
+        self.save_gif(output, start_frame=start_frame)
         return output.getvalue()
 
     def _as_img(self):
@@ -1070,7 +916,7 @@ def import_clip(
     duration = datetime.timedelta(seconds=1) / fps
 
     # Read the Pikov file.
-    pikov = Pikov.open(pikov_path)
+    pkv = Pikov.open(pikov_path)
 
     # Chop the sprite sheet into frames.
     sheet = PIL.Image.open(spritesheet_path)
@@ -1091,7 +937,7 @@ def import_clip(
 
         if flip_x:
             frame = PIL.ImageOps.mirror(frame)
-        image_key, image_added = pikov.add_image(frame)
+        image_key, image_added = pkv.add_image(frame)
         if image_added:
             added += 1
         else:
@@ -1108,15 +954,26 @@ def import_clip(
             })
 
     # Create clip
-    clip = pikov.add_clip(clip_id)
+    start_frame = None
+    clip_frames = []
     for spritesheet_frame in frames:
         image_key, original_image = images[spritesheet_frame]
-        frame = clip.append_frame(image_key, duration)
+        frame = pkv.add_frame(image_key, duration=duration)
         frame.set_property('originalImage', original_image)
+        frame.set_property('clipId', clip_id)
+        if start_frame is None:
+            start_frame = frame
+        clip_frames.append(frame)
+
+    clip = Clip(clip_frames)  # TODO: is_loop?
+    transitions = clip.add_missing_transitions()
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
-    print('Created clip {} with {} frames.'.format(clip.id, len(frames)))
+    print((
+        'Created clip {} starting at frame {} with {} frames and {} '
+        'transitions.').format(
+            clip_id, start_frame.id, len(frames), len(transitions)))
 
 
 def create(pikov_path):
