@@ -227,7 +227,7 @@ def test_get_image_notfound(pkv):
 
 
 def test_get_image_found(pkv, pil_image):
-    key, is_added = pkv.add_image(pil_image)
+    key, _ = pkv.add_image(pil_image)
     img = pkv.get_image(key)
     assert img.key == key
     assert img.contents is not None
@@ -264,9 +264,9 @@ def test_frame_transitions(pkv, clip_with_frames, clip_2):
     assert len(transitions) == 2
     assert all(
         (transition.source == source_frame for transition in transitions))
-    # Transitions should be sorted by target clip_order.
-    assert transitions[0].target == target1
-    assert transitions[1].target == target2
+    targets = frozenset((transition.target for transition in transitions))
+    assert target1 in targets
+    assert target2 in targets
 
 
 def test_clip_transitions_to(pkv, clip_with_frames, clip_2):

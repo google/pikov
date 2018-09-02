@@ -23,6 +23,7 @@ import os.path
 import random
 import sqlite3
 import typing
+import uuid
 
 import PIL.Image
 import PIL.ImageOps
@@ -128,14 +129,14 @@ class Frame:
     Args:
         connection (sqlite3.Connection):
             A connection to the SQLite database this frame belongs to.
-        id (int): The primary key of this frame.
+        id (str): The primary key of this frame.
     """
     def __init__(self, connection: sqlite3.Connection, id: int):
         self._connection = connection
         self._id = id
 
     @property
-    def id(self) -> int:
+    def id(self) -> str:
         return self._id
 
     @property
@@ -275,6 +276,9 @@ class Frame:
     def __eq__(self, other):
         return isinstance(other, Frame) and self.id == other.id
 
+    def __hash__(self):
+        return self._id.__hash__()
+
     def __repr__(self):
         return f"Frame(id='{self._id}')"
 
@@ -340,14 +344,14 @@ class Clip:
             # Always loop since this the GIF is used to preview the clip.
             loop=0)
 
-    def add_missing_transitions(self) -> typing.Collection['Transition']:
+    def add_missing_transitions(self) -> typing.Iterable['Transition']:
         """Add missing transitions between consecutive frames in the clip.
 
         TODO: Only add missing transitions. Method currently adds all
         transitions.
 
         Returns:
-            Collection[Transition]: Any transitions that were added.
+            Iterable[Transition]: Any transitions that were added.
         """
         added_transitions = []
 
@@ -575,7 +579,7 @@ class Pikov:
             'content_type TEXT);')
         cursor.execute(
             'CREATE TABLE frame ('
-            'id INTEGER PRIMARY KEY, '
+            'id TEXT PRIMARY KEY, '
             'image_key TEXT, '
             'duration_microseconds INTEGER, '
             'properties TEXT, '
@@ -583,13 +587,14 @@ class Pikov:
         cursor.execute(
             'CREATE TABLE pikov ('
             'id STRING PRIMARY KEY, '
-            'start_frame_id INTEGER, '
+            'start_frame_id TEXT, '
             'FOREIGN KEY(start_frame_id) REFERENCES frame(id));')
         cursor.execute(
             'CREATE TABLE transition ('
             'id INTEGER PRIMARY KEY, '
-            'source_frame_id INTEGER, '
-            'target_frame_id INTEGER, '
+            'source_frame_id TEXT, '
+            'target_frame_id TEXT, '
+            # TODO: add weights (inversely proportional to probabilities)
             'FOREIGN KEY(source_frame_id) REFERENCES frame(id), '
             'FOREIGN KEY(target_frame_id) REFERENCES frame(id));')
         cursor.execute('INSERT INTO pikov (id) VALUES (1);')
@@ -681,7 +686,7 @@ class Pikov:
 
         return Image(self._connection, key)
 
-    def add_frame(self, image_key, duration=None):
+    def add_frame(self, image_key, duration=None, frame_id=None):
         """Add an animation frame to the Pikov file.
 
         Args:
@@ -690,10 +695,14 @@ class Pikov:
             duration (datetime.timedelta, optional):
                 Duration to display the frame within a clip. Defaults to
                 100,000 microseconds (10 frames per second).
+            frame_id (str):
+                ID to use to refer to this frame.
 
         Returns:
             Frame: The frame added.
         """
+        if frame_id is None:
+            frame_id = str(uuid.uuid4())
         if duration is None:
             duration = datetime.timedelta(microseconds=100000)
         duration_microseconds = int(duration.total_seconds() * 1000000)
@@ -701,10 +710,9 @@ class Pikov:
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                'INSERT INTO frame (image_key, duration_microseconds) '
-                'VALUES (?, ?)',
-                (image_key, duration_microseconds))
-            frame_id = cursor.lastrowid
+                'INSERT INTO frame (id, image_key, duration_microseconds) '
+                'VALUES (?, ?, ?)',
+                (frame_id, image_key, duration_microseconds))
             # Set to the start clip if one hasn't been set yet.
             cursor.execute(
                 'UPDATE pikov SET start_frame_id = ? '
@@ -716,7 +724,7 @@ class Pikov:
         """Get the animation frame with a specific ID.
 
         Args:
-            frame_id (int): Identifier of the animation frame to load.
+            frame_id (str): Identifier of the animation frame to load.
 
         Returns:
             Frame: A frame, if found.
@@ -969,9 +977,10 @@ def import_clip(
     # Create clip
     start_frame = None
     clip_frames = []
-    for spritesheet_frame in frames:
+    for frame_sequence, spritesheet_frame in enumerate(frames):
         image_key, original_image = images[spritesheet_frame]
-        frame = pkv.add_frame(image_key, duration=duration)
+        frame = pkv.add_frame(
+            image_key, duration=duration, frame_id=f'{clip_id}_{frame_sequence}')
         frame.set_property('originalImage', original_image)
         frame.set_property('clipId', clip_id)
         if start_frame is None:

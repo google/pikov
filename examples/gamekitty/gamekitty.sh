@@ -30,7 +30,7 @@ clips=(
     # jump 50,51,45,45,52,48,49
     # jump_to_stand 53,54,55
     # walk 84,85,87,88,89,90,91,92,93,95,96,97
-    sit_paw 62,63,64,65,66
+    sit_paw 62,63,64,65
     sit_to_crouch 69,70,71
     crouch 72
     lie_down 73
