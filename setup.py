@@ -45,4 +45,7 @@ setup(
             'pikov=pikov.pikov:main',
         ],
     },
+    extras_require={
+        'networkx': ['networkx'],
+    },
 )
