@@ -172,6 +172,17 @@ def test_get_frame(pkv, frame):
     assert got.image.contents is not None
 
 
+def test_list_frames_empty(pkv):
+    frames = list(pkv.list_frames())
+    assert frames == []
+
+
+def test_list_frames_nonempty(pkv, frame):
+    frames = list(pkv.list_frames())
+    assert len(frames) != 0
+    assert frame in frames
+
+
 # Clip
 def test_add_frames(pkv, frame):
     clip = frame + frame

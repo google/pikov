@@ -736,6 +736,19 @@ class Pikov:
 
         return Frame(self._connection, frame_id)
 
+    def list_frames(self):
+        """List all the animation frames in no particular order
+
+        Returns:
+            Collection[Frame]: A colleciton of frames
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute('SELECT id FROM frame')
+            rows = cursor.fetchall()
+
+        return (Frame(self._connection, row[0]) for row in rows)
+
     def find_absorbing_frames(self) -> typing.Tuple[Frame, ...]:
         """Return all frames which are 'absorbing'.
 
