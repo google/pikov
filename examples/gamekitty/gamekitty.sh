@@ -20,21 +20,22 @@ typeset -A buffer
 clips=(
     sit 0
     sit_to_stand 1,2,3,4
-    # stand_to_walk 34,35
-    # strut 36,37,38,39,41,42,43,44
     stand_waggle 26,4
     stand_to_sit 57,58,59,60,61
+    sit_paw 62,63,64,65
+    # sit_to_crouch 69,70,71
+    # crouch 72
+    # crouch_to_sit 75,76,77
+    # lie_down 73,176
+    # sleep 177,178,179,178
+    # stand_to_walk 34,35
     # turn_from_sit 10,11,12,13,14,15,16
     # turn_from_stand 18,19,20,21,22,23,24,25
     # stand_to_jump 46,47,48,49
     # jump 50,51,45,45,52,48,49
     # jump_to_stand 53,54,55
     # walk 84,85,87,88,89,90,91,92,93,95,96,97
-    sit_paw 62,63,64,65
-    sit_to_crouch 69,70,71
-    crouch 72
-    lie_down 73
-    crouch_to_sit 75,76,77
+    # strut 36,37,38,39,41,42,43,44
 )
 rm examples/gamekitty/gamekitty.pikov ; pikov create examples/gamekitty/gamekitty.pikov
 
