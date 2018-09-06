@@ -28,6 +28,11 @@ import uuid
 import PIL.Image
 import PIL.ImageOps
 
+try:
+    import networkx
+except ImportError:
+    networkx = None
+
 
 PIXEL_ART_CSS = (
     'image-rendering: -moz-crisp-edges; '
@@ -98,11 +103,14 @@ class Image:
             '</table>'
         )
 
-    def _to_img(self):
+    def _to_data_url(self):
         contents_base64 = base64.b64encode(self.contents).decode('utf-8')
+        return f'data:{self.content_type};base64,{contents_base64}'
+
+    def _to_img(self):
         return (
             f'<img alt="image with key {self.key}" '
-            f'src="data:{self.content_type};base64,{contents_base64}" '
+            f'src="{self._to_data_url()}" '
             f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
@@ -748,7 +756,7 @@ class Pikov:
         """List all the animation frames in no particular order
 
         Returns:
-            Collection[Frame]: A colleciton of frames
+            Iterable[Frame]: A collection of frames
         """
         with self._connection:
             cursor = self._connection.cursor()
@@ -756,6 +764,19 @@ class Pikov:
             rows = cursor.fetchall()
 
         return (Frame(self._connection, row[0]) for row in rows)
+
+    def list_transitions(self):
+        """List all the transitions in no particular order
+
+        Returns:
+            Iterable[Transition]: A collection of transitions
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute('SELECT id FROM transition')
+            rows = cursor.fetchall()
+
+        return (Transition(self._connection, row[0]) for row in rows)
 
     def find_absorbing_frames(self) -> typing.Tuple[Frame, ...]:
         """Return all frames which are 'absorbing'.
@@ -840,6 +861,30 @@ class Pikov:
             min_duration=min_duration,
             max_duration=max_duration)
         preview_clip.save_gif(fp)
+
+    def to_networkx(self) -> 'networkx.DiGraph':
+        """Convert pikov object to networkx directed graph."""
+        # TODO: raise error if networkx not installed
+        graph = networkx.DiGraph()
+        graph.add_nodes_from(self.list_frames())
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT source_frame_id, target_frame_id '
+                'FROM transition '
+                'GROUP BY source_frame_id, target_frame_id')
+            rows = cursor.fetchall()
+
+        edges = (
+            (
+                Frame(self._connection, row[0]),
+                Frame(self._connection, row[1]),
+            ) for row in rows
+        )
+        graph.add_edges_from(edges)
+
+        return graph
 
     def _to_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
@@ -980,7 +1025,9 @@ def import_clip(
     for frame_sequence, spritesheet_frame in enumerate(frames):
         image_key, original_image = images[spritesheet_frame]
         frame = pkv.add_frame(
-            image_key, duration=duration, frame_id=f'{clip_id}_{frame_sequence}')
+            image_key,
+            duration=duration,
+            frame_id=f'{clip_id}_{frame_sequence}')
         frame.set_property('originalImage', original_image)
         frame.set_property('clipId', clip_id)
         if start_frame is None:
