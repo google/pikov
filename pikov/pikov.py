@@ -886,7 +886,6 @@ class Pikov:
 
         return graph
 
-
     def _to_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
 
@@ -1026,7 +1025,9 @@ def import_clip(
     for frame_sequence, spritesheet_frame in enumerate(frames):
         image_key, original_image = images[spritesheet_frame]
         frame = pkv.add_frame(
-            image_key, duration=duration, frame_id=f'{clip_id}_{frame_sequence}')
+            image_key,
+            duration=duration,
+            frame_id=f'{clip_id}_{frame_sequence}')
         frame.set_property('originalImage', original_image)
         frame.set_property('clipId', clip_id)
         if start_frame is None:
