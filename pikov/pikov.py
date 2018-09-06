@@ -28,6 +28,11 @@ import uuid
 import PIL.Image
 import PIL.ImageOps
 
+try:
+    import networkx
+except ImportError:
+    networkx = None
+
 
 PIXEL_ART_CSS = (
     'image-rendering: -moz-crisp-edges; '
@@ -88,21 +93,24 @@ class Image:
             self._contents = row[0]
             return self._contents
 
-    def _as_html(self):
+    def _to_html(self):
         return (
             '<table>'
             '<tr><th>Image</th><th></th></tr>'
             f'<tr><td>key</td><td>{self.key}</td></tr>'
             f'<tr><td>content_type</td><td>{self.content_type}</td></tr>'
-            f'<tr><td>contents</td><td>{self._as_img()}</td></tr>'
+            f'<tr><td>contents</td><td>{self._to_img()}</td></tr>'
             '</table>'
         )
 
-    def _as_img(self):
+    def _to_data_url(self):
         contents_base64 = base64.b64encode(self.contents).decode('utf-8')
+        return f'data:{self.content_type};base64,{contents_base64}'
+
+    def _to_img(self):
         return (
             f'<img alt="image with key {self.key}" '
-            f'src="data:{self.content_type};base64,{contents_base64}" '
+            f'src="{self._to_data_url()}" '
             f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
@@ -118,7 +126,7 @@ class Image:
             data[self.content_type] = self.contents
 
         if should_include('text/html'):
-            data['text/html'] = self._as_html()
+            data['text/html'] = self._to_html()
 
         return data
 
@@ -250,12 +258,12 @@ class Frame:
         else:
             raise TypeError(f'Cannot add Frame and {str(type(other))}')
 
-    def _as_html(self):
+    def _to_html(self):
         image_key = None
         image_html = None
         if self.image is not None:
             image_key = self.image.key
-            image_html = self.image._as_img()
+            image_html = self.image._to_img()
 
         with self._connection:
             properties = self._get_properties(self._connection.cursor())
@@ -294,7 +302,7 @@ class Frame:
             data[self.image.content_type] = self.image.contents
 
         if should_include('text/html'):
-            data['text/html'] = self._as_html()
+            data['text/html'] = self._to_html()
 
         return data
 
@@ -389,7 +397,7 @@ class Clip:
         else:
             raise TypeError(f'Cannot add Clip and {str(type(other))}')
 
-    def _as_gif(self) -> typing.Optional[bytes]:
+    def _to_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
 
         Returns:
@@ -404,8 +412,8 @@ class Clip:
         self.save_gif(output)
         return output.getvalue()
 
-    def _as_img(self):
-        gif_contents = self._as_gif()
+    def _to_img(self):
+        gif_contents = self._to_gif()
         if not gif_contents:
             return None
 
@@ -416,13 +424,13 @@ class Clip:
             f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
-    def _as_html(self):
+    def _to_html(self):
         frames_repr = ', '.join((repr(frame) for frame in self._frames))
         return (
             '<table>'
             f'<tr><th>Clip</th><th></th></tr>'
             f'<tr><td>frames</td><td>{frames_repr}</td></tr>'
-            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            f'<tr><td>preview</td><td>{self._to_img()}</td></tr>'
             '</table>'
         )
 
@@ -436,12 +444,12 @@ class Clip:
 
         # Clip can be represented by just a GIF.
         if should_include('image/gif'):
-            gif_contents = self._as_gif()
+            gif_contents = self._to_gif()
             if gif_contents:
                 data['image/gif'] = gif_contents
 
         if should_include('text/html'):
-            data['text/html'] = self._as_html()
+            data['text/html'] = self._to_html()
 
         return data
 
@@ -505,18 +513,18 @@ class Transition:
                 (self._id,))
             self._deleted = True
 
-    def _as_clip(self) -> Clip:
+    def _to_clip(self) -> Clip:
         return Clip((self.source, self.target))
 
-    def _as_gif(self) -> typing.Optional[bytes]:
-        return self._as_clip()._as_gif()
+    def _to_gif(self) -> typing.Optional[bytes]:
+        return self._to_clip()._to_gif()
 
-    def _as_img(self) -> str:
-        return self._as_clip()._as_img()
+    def _to_img(self) -> str:
+        return self._to_clip()._to_img()
 
-    def _as_html(self) -> str:
-        source_img = self.source.image._as_img()
-        target_img = self.target.image._as_img()
+    def _to_html(self) -> str:
+        source_img = self.source.image._to_img()
+        target_img = self.target.image._to_img()
         return (
             '<table>'
             '<tr><th>Transition</th><th></th></tr>'
@@ -525,7 +533,7 @@ class Transition:
             f'<tr><td>source.image</td><td>{source_img}</td></tr>'
             f'<tr><td>target.id</td><td>{self.target.id}</td></tr>'
             f'<tr><td>target.image</td><td>{target_img}</td></tr>'
-            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            f'<tr><td>preview</td><td>{self._to_img()}</td></tr>'
             '</table>'
         )
 
@@ -544,12 +552,12 @@ class Transition:
 
         # Clip can be represented by just a GIF.
         if should_include('image/gif'):
-            gif_contents = self._as_gif()
+            gif_contents = self._to_gif()
             if gif_contents:
                 data['image/gif'] = gif_contents
 
         if should_include('text/html'):
-            data['text/html'] = self._as_html()
+            data['text/html'] = self._to_html()
 
         return data
 
@@ -748,7 +756,7 @@ class Pikov:
         """List all the animation frames in no particular order
 
         Returns:
-            Collection[Frame]: A colleciton of frames
+            Iterable[Frame]: A collection of frames
         """
         with self._connection:
             cursor = self._connection.cursor()
@@ -756,6 +764,19 @@ class Pikov:
             rows = cursor.fetchall()
 
         return (Frame(self._connection, row[0]) for row in rows)
+
+    def list_transitions(self):
+        """List all the transitions in no particular order
+
+        Returns:
+            Iterable[Transition]: A collection of transitions
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute('SELECT id FROM transition')
+            rows = cursor.fetchall()
+
+        return (Transition(self._connection, row[0]) for row in rows)
 
     def find_absorbing_frames(self) -> typing.Tuple[Frame, ...]:
         """Return all frames which are 'absorbing'.
@@ -841,7 +862,31 @@ class Pikov:
             max_duration=max_duration)
         preview_clip.save_gif(fp)
 
-    def _as_gif(self) -> typing.Optional[bytes]:
+    def to_networkx(self) -> 'networkx.DiGraph':
+        """Convert pikov object to networkx directed graph."""
+        # TODO: raise error if networkx not installed
+        graph = networkx.DiGraph()
+        graph.add_nodes_from(self.list_frames())
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT source_frame_id, target_frame_id '
+                'FROM transition '
+                'GROUP BY source_frame_id, target_frame_id')
+            rows = cursor.fetchall()
+
+        edges = (
+            (
+                Frame(self._connection, row[0]),
+                Frame(self._connection, row[1]),
+            ) for row in rows
+        )
+        graph.add_edges_from(edges)
+
+        return graph
+
+    def _to_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
 
         Returns:
@@ -857,8 +902,8 @@ class Pikov:
         self.save_gif(output, start_frame=start_frame)
         return output.getvalue()
 
-    def _as_img(self):
-        gif_contents = self._as_gif()
+    def _to_img(self):
+        gif_contents = self._to_gif()
         if not gif_contents:
             return None
 
@@ -869,11 +914,11 @@ class Pikov:
             f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
-    def _as_html(self):
+    def _to_html(self):
         return (
             '<table>'
             f'<tr><th>Pikov</th><th></th></tr>'
-            f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
+            f'<tr><td>preview</td><td>{self._to_img()}</td></tr>'
             '</table>'
         )
 
@@ -884,12 +929,12 @@ class Pikov:
 
         # Clip can be represented by just a GIF.
         if should_include('image/gif'):
-            gif_contents = self._as_gif()
+            gif_contents = self._to_gif()
             if gif_contents:
                 data['image/gif'] = gif_contents
 
         if should_include('text/html'):
-            data['text/html'] = self._as_html()
+            data['text/html'] = self._to_html()
 
         return data
 
@@ -980,7 +1025,9 @@ def import_clip(
     for frame_sequence, spritesheet_frame in enumerate(frames):
         image_key, original_image = images[spritesheet_frame]
         frame = pkv.add_frame(
-            image_key, duration=duration, frame_id=f'{clip_id}_{frame_sequence}')
+            image_key,
+            duration=duration,
+            frame_id=f'{clip_id}_{frame_sequence}')
         frame.set_property('originalImage', original_image)
         frame.set_property('clipId', clip_id)
         if start_frame is None:
