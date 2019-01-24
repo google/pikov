@@ -85,6 +85,21 @@
         "string": "coordinate.y"
       }
     },
+    "db5b02f92e5f489ea34cb66a5b5c9e75": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "vector"
+      }
+    },
+    "9b3dcb8dd2984ed6b126cd0287a4523a": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "vector.x"
+      }
+    },
+    "aa3ed66ad6564addb41415ae681ffd05": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "vector.y"
+      }
+    },
     "667901a1e1c54035b7e586a05fffed2e": {
       "169a81aefca74e92b45e3fa03c7021df": {
         "string": "rectangle.anchor"
@@ -98,6 +113,21 @@
     "68b5d34bb7954ad6850cd55cbae05ccf": {
       "169a81aefca74e92b45e3fa03c7021df": {
         "string": "rectangle.height"
+      }
+    },
+    "158aafa594b44474a7da66a8cfa419f0": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "sprite"
+      }
+    },
+    "4b079607f347492c8250059b5c0b2ef6": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "sprite.frame"
+      }
+    },
+    "2175a23088d347cb9256b7f6c6eae310": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "sprite.position"
       }
     }
   }
