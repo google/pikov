@@ -47,7 +47,7 @@
     },
     "66b25e276cfb4d83a7032baaa4369b6f": {
       "169a81aefca74e92b45e3fa03c7021df": {
-        "string": "coordinate.y"
+        "string": "point.y"
       }
     },
     "68b5d34bb7954ad6850cd55cbae05ccf": {
@@ -67,7 +67,7 @@
     },
     "825142afc2934fbcb5126e149ac5ba31": {
       "169a81aefca74e92b45e3fa03c7021df": {
-        "string": "coordinate.x"
+        "string": "point.x"
       }
     },
     "8b057dd7a9c84b7180cb2d8d6015b833": {
@@ -127,7 +127,7 @@
     },
     "bfa8113cb5e5436ebd76ab5418b7efd1": {
       "169a81aefca74e92b45e3fa03c7021df": {
-        "string": "coordinate"
+        "string": "point"
       }
     },
     "c5f33d38b1104896ba54d09dba3d0acf": {
