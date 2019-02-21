@@ -21,31 +21,20 @@ here = path.abspath(path.dirname(__file__))
 readme = open(path.join(here, 'README.rst'), encoding='utf-8').read()
 
 setup(
-    name='pikov',
-    description='Pikov (PIxel art marKOV chain) animation tool',
+    name='pikov-semantic-graph',
+    description='Pikov Semantic Graphs.',
     version='0.0.1.dev1',
     author='Tim Swast',
     author_email='swast@google.com',
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
-    install_requires=[
-        'Pillow >= 5.2.0, < 6.0dev',
-    ],
     license='Apache 2.0',
     long_description=readme,
-    url='https://github.com/tswast/pikov',
-    keywords='pixelart animation',
+    url='https://github.com/google/pikov',
+    keywords='labeled semantic graph',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
     ],
-    entry_points={
-        'console_scripts': [
-            'pikov=pikov.pikov:main',
-        ],
-    },
-    extras_require={
-        'networkx': ['networkx'],
-    },
 )
