@@ -13,26 +13,30 @@
 # limitations under the License.
 
 import json
+import pathlib
 
 from . import core
 
 
 class JSONGraph(core.AbstractGraph):
-    def __init__(self):
+    def __init__(self, filepath):
         self._properties = {'guidMap': {}}
+        self.filepath = pathlib.Path(filepath)
 
     @property
     def _guid_map(self):
         return self._properties['guidMap']
 
     @classmethod
-    def load(cls, fp):
-        graph = cls()
-        graph._properties = json.load(fp)
+    def load(cls, filepath):
+        graph = cls(filepath)
+        with open(filepath) as fp:
+            graph._properties = json.load(fp)
         return graph
 
-    def save(self, fp):
-        json.dump(self._properties, fp, indent=2, sort_keys=True)
+    def save(self):
+        with open(self.filepath, "w") as fp:
+            json.dump(self._properties, fp, indent=2, sort_keys=True)
 
     def _to_json(self, target):
         if isinstance(target, core.GuidNode):
