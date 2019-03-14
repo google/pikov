@@ -21,8 +21,8 @@ here = path.abspath(path.dirname(__file__))
 readme = open(path.join(here, 'README.rst'), encoding='utf-8').read()
 
 setup(
-    name='pikov-semantic-graph',
-    description='Pikov Semantic Graphs.',
+    name='pikov',
+    description='Pikov - Pixel Art Markov Chains, based on semantic graphs.',
     version='0.0.1.dev1',
     author='Tim Swast',
     author_email='swast@google.com',
@@ -36,5 +36,6 @@ setup(
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
 )
