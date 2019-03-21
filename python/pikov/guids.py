@@ -14,5 +14,5 @@
 
 """A collection of well-known GUIDs."""
 
-CTOR_GUID = "aba6ac79fd3d409da860a77c90942852"
-NAME_GUID = "169a81aefca74e92b45e3fa03c7021df"
+CTOR = "aba6ac79fd3d409da860a77c90942852"
+NAME = "169a81aefca74e92b45e3fa03c7021df"

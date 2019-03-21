@@ -16,8 +16,7 @@
 
 from .core import GuidNode
 from .properties import StringProperty
-from .guids import CTOR_GUID
-from .guids import NAME_GUID
+from . import guids
 
 
 class SemanticGraphNode(GuidNode):
@@ -30,7 +29,7 @@ class SemanticGraphNode(GuidNode):
 
         graph.set_value(
             self,
-            GuidNode(graph, guid=CTOR_GUID),
+            GuidNode(graph, guid=guids.CTOR),
             GuidNode(graph, guid=ctor.guid))
 
-    name = StringProperty(GuidNode(None, guid=NAME_GUID))
+    name = StringProperty(GuidNode(None, guid=guids.NAME))
