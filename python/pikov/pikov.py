@@ -30,6 +30,12 @@ class SemanticGraphNode(GuidNode):
         graph.set_value(
             self,
             GuidNode(graph, guid=guids.CTOR),
-            GuidNode(graph, guid=ctor.guid))
+            GuidNode(graph, guid=_get_guid(ctor)))
 
     name = StringProperty(GuidNode(None, guid=guids.NAME))
+
+
+def _get_guid(node_or_guid):
+    if isinstance(node_or_guid, str):
+        return node_or_guid
+    return node_or_guid.guid
