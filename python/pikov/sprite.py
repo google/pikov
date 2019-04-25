@@ -207,17 +207,9 @@ class Frame(SemanticGraphNode):
 FrameProperty = make_guid_property(Frame)
 
 
-class FrameList(GuidNode):
-    def __init__(self, graph, guid=None):
-        super().__init__(graph, guid=guid)
-
-        graph.set_value(
-            self,
-            names["ctor"],
-            GuidNode(graph, guid=names["EmptyList"]))
-
-        # Cache list so we can index by integer.
-        # self._nodes = [self]
+class FrameList(SemanticGraphNode):
+    def __init__(self, guid_map, guid=None):
+        super().__init__(names["EmptyList"], guid_map, guid=guid)
 
     head = FrameProperty(names["NonemptyList.head"])
 
