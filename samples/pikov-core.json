@@ -1,0 +1,170 @@
+{
+  "guidMap": {
+    "0de9d2d0679945ca9e6957f049cc982c": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "bitmap.resource"
+      }
+    },
+    "158aafa594b44474a7da66a8cfa419f0": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "sprite"
+      }
+    },
+    "169a81aefca74e92b45e3fa03c7021df": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "name"
+      }
+    },
+    "1f22dbb5504344fb93f57f0f0eb0ba6f": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "rectangle.width"
+      }
+    },
+    "2175a23088d347cb9256b7f6c6eae310": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "sprite.position"
+      }
+    },
+    "4b079607f347492c8250059b5c0b2ef6": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "sprite.frame"
+      }
+    },
+    "4e09f9df1fdf4eb4964ff9ed1b375dbb": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "resource.relative_path"
+      }
+    },
+    "51fb7a7a95d4486bb197509fd53dec2d": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "EmptyList"
+      }
+    },
+    "667901a1e1c54035b7e586a05fffed2e": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "rectangle.anchor"
+      }
+    },
+    "66b25e276cfb4d83a7032baaa4369b6f": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "point.y"
+      }
+    },
+    "68b5d34bb7954ad6850cd55cbae05ccf": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "rectangle.height"
+      }
+    },
+    "6ecf1345ea0b4865b92569971b100b09": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "resource"
+      }
+    },
+    "7c03dc958d8642b4be3417e69e36695c": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "Clip.frames"
+      }
+    },
+    "825142afc2934fbcb5126e149ac5ba31": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "point.x"
+      }
+    },
+    "8b057dd7a9c84b7180cb2d8d6015b833": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "frame"
+      }
+    },
+    "8ea9b7bc02e748ae9dc2e169590e71e3": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "transition.source"
+      }
+    },
+    "8fe06c0750344322bd773f56bdd73b0a": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "transition"
+      }
+    },
+    "995607dcd31e477994333565511c1de2": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "bitmap.crop"
+      }
+    },
+    "9b3dcb8dd2984ed6b126cd0287a4523a": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "vector.x"
+      }
+    },
+    "9c8708a5228d42918017d5da96cf0327": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "transition.offset"
+      }
+    },
+    "a2be632d888143e89ddfd4b1b8c8492d": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "frame.duration_microseconds"
+      }
+    },
+    "a74851b7a58f4e52b72ee719b258a7b1": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "NonemptyList.head"
+      }
+    },
+    "aa3ed66ad6564addb41415ae681ffd05": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "vector.y"
+      }
+    },
+    "aba6ac79fd3d409da860a77c90942852": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "ctor"
+      }
+    },
+    "bc7e9e34c3464292ba39c2b1b9dc8902": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "bitmap"
+      }
+    },
+    "bfa8113cb5e5436ebd76ab5418b7efd1": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "point"
+      }
+    },
+    "c5f33d38b1104896ba54d09dba3d0acf": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "rectangle"
+      }
+    },
+    "c6b725e0c8bb419ca9408eec5febbde8": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "frame.bitmap"
+      }
+    },
+    "db5b02f92e5f489ea34cb66a5b5c9e75": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "vector"
+      }
+    },
+    "e53f14ab72eb40f590e5ae53fb53e988": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "NonemptyList.tail"
+      }
+    },
+    "e8cec171b1f5462297f2e81ab606b687": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "Clip"
+      }
+    },
+    "f0408beb29c74dc7bc20dc461104e949": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "NonemptyList"
+      }
+    },
+    "ff7abe687a764f9d80d67a70424c329a": {
+      "169a81aefca74e92b45e3fa03c7021df": {
+        "string": "transition.target"
+      }
+    }
+  },
+  "root": "158aafa594b44474a7da66a8cfa419f0"
+}
